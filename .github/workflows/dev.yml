@@ -91,11 +91,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python 3.7
+      - name: Add deadsnakes PPA for Python 3.7
         run: |
           sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo apt-get update
+
+      - name: Install Python 3.7
+        run: |
           sudo apt-get install -y python3.7 python3.7-venv python3.7-dev
           python3.7 --version
+
+      - name: Install pip for Python 3.7
+        run: |
+          curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3.7
 
       - name: Install UV
         run: pip install uv

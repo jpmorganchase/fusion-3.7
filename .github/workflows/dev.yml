@@ -19,10 +19,10 @@ concurrency:
 env:
   UV_HTTP_TIMEOUT: 300
   PIP_DISABLE_PIP_VERSION_CHECK: 1
+  UV_SYSTEM_PYTHON: true
 
 # Define the jobs that run in the workflow
 jobs:
-  # Define the tests job that runs on ubuntu-latest with Python 3.7
   sdist-n-tests:
     strategy:
       fail-fast: true
@@ -33,8 +33,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Python 3.7
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3.7 python3.7-venv python3.7-dev
+          python3.7 --version
+
       - name: Install UV
-        uses: astral-sh/setup-uv@v4
+        run: pip install uv
 
       - name: Set up Python ${{ matrix.python-versions }}
         run: uv python install ${{ matrix.python-versions }}
@@ -47,43 +53,6 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-        shell: bash
-
-      - name: Get Python Info
-        id: get-python-info
-        run: |
-          uv run python -c "import platform; print(f'{platform.python_version()}')" > python_info.txt
-          ls -l $(readlink $(uv run which python))
-
-      - name: Set python native lib path
-        id: set-env-var
-        run: |
-          PYTHON_INFO=$(cat python_info.txt)
-          FULL_PYTHON_LIB_PATH=$(eval echo $HOME/.local/share/uv/python/cpython-$PYTHON_INFO*/lib)
-          echo "PYTHON_INFO=$PYTHON_INFO" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=${FULL_PYTHON_LIB_PATH}:\$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Debug Environment Variables
-        run: |
-          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
-          echo "PYTHON_INFO: $PYTHON_INFO"
-        env:
-          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
-          PYTHON_INFO: ${{ env.PYTHON_INFO }}
-
-      - name: Show Library Paths
-        run: |
-          echo "Library paths:"
-          ldconfig -v 2>/dev/null | grep -v ^$'\t'
-        env:
-          LD_LIBRARY_PATH: ${{ env.LD_LIBRARY_PATH }}
-
-      - name: Check Python Library
-        run: |
-          ls -l $HOME/.local/share/uv/python/cpython-$PYTHON_INFO*/lib/libpython*.so
-        env:
-          PYTHON_INFO: ${{ env.PYTHON_INFO }}
 
       - name: Run tox
         run: uv run tox -e lint,doc
@@ -91,7 +60,6 @@ jobs:
       # Build and upload the source distribution
       - name: Build sdist
         run: uv build --sdist
-        shell: bash
 
       # Integration test artifacts
       - name: Integration test artifact
@@ -106,7 +74,6 @@ jobs:
         env:
           FUSION_CLIENT_ID: ${{ secrets.FUSION_CLIENT_ID }}
           FUSION_CLIENT_SECRET: ${{ secrets.FUSION_CLIENT_SECRET }}
-        shell: bash
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
@@ -123,16 +90,18 @@ jobs:
           - target: "x86_64-unknown-linux-gnu"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-versions }}
+
+      - name: Install Python 3.7
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3.7 python3.7-venv python3.7-dev
+          python3.7 --version
 
       - name: Install UV
         run: pip install uv
 
       - name: Build wheels
-        run: |
-          uv build --wheel
+        run: uv build --wheel
         env:
           LD_LIBRARY_PATH: /usr/local/lib:$LD_LIBRARY_PATH
 
@@ -147,7 +116,6 @@ jobs:
         env:
           FUSION_CLIENT_ID: ${{ secrets.FUSION_CLIENT_ID }}
           FUSION_CLIENT_SECRET: ${{ secrets.FUSION_CLIENT_SECRET }}
-        shell: bash
 
       - name: Upload Wheels
         uses: actions/upload-artifact@v4
@@ -163,9 +131,12 @@ jobs:
         target: ["x86_64-unknown-linux-musl"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-versions }}
+
+      - name: Install Python 3.7
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3.7 python3.7-venv python3.7-dev
+          python3.7 --version
 
       - name: Install UV
         run: pip install uv
@@ -174,8 +145,6 @@ jobs:
         run: |
           docker run --rm -v $(pwd):/io quay.io/pypa/musllinux_1_1_x86_64 python3.7 -m pip install --upgrade pip
           docker run --rm -v $(pwd):/io quay.io/pypa/musllinux_1_1_x86_64 python3.7 -m pip wheel -w dist .
-        env:
-          PIP_DISABLE_PIP_VERSION_CHECK: 1
 
       # Integration test artifacts
       - name: Integration test artifact
@@ -188,7 +157,6 @@ jobs:
         env:
           FUSION_CLIENT_ID: ${{ secrets.FUSION_CLIENT_ID }}
           FUSION_CLIENT_SECRET: ${{ secrets.FUSION_CLIENT_SECRET }}
-        shell: bash
 
       - name: Upload musllinux Wheels
         uses: actions/upload-artifact@v4
@@ -203,16 +171,10 @@ jobs:
         python-versions: ["3.7"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-versions }}
-
       - name: Install UV
         uses: astral-sh/setup-uv@v4
-
       - name: Build wheels
         run: uv build --wheel
-
       - name: Upload Wheels
         uses: actions/upload-artifact@v4
         with:
@@ -226,16 +188,12 @@ jobs:
         python-versions: ["3.7"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-versions }}
-
+      - name: Install Python 3.7
+        run: brew install [email protected]
       - name: Install UV
-        run: pip install uv
-
+        run: pip3 install uv
       - name: Build wheels
         run: uv build --wheel
-
       - name: Upload Wheels
         uses: actions/upload-artifact@v4
         with:

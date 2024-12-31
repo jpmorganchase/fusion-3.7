@@ -105,7 +105,7 @@ jobs:
 
       - name: Install pip for Python 3.7
         run: |
-          curl -sS https://bootstrap.pypa.io/get-pip.py | sudo python3.7
+          curl -sS https://bootstrap.pypa.io/pip/3.7/get-pip.py | sudo python3.7
 
       - name: Install UV
         run: pip install uv

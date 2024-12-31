@@ -91,18 +91,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install Python 3.7
+      # Install Python 3.7 using deadsnakes PPA
       - name: Install Python 3.7
         run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt-get update
           sudo apt-get install -y python3.7 python3.7-venv python3.7-dev
           curl -sS https://bootstrap.pypa.io/pip/3.7/get-pip.py | sudo python3.7
           python3.7 --version
+          python3.7 -m pip --version
 
       # Install UV explicitly and resolve dependencies for Python 3.7
       - name: Install UV and resolve for Python 3.7
         run: |
-          pip install uv
+          python3.7 -m pip install uv
           uv sync --python-version 3.7 --all-extras --dev
 
       # Build wheels using UV
@@ -129,6 +133,7 @@ jobs:
         with:
           name: artifacts-linux-${{ matrix.platform.target }}-${{ matrix.python-versions }}
           path: dist/*.whl
+
 
 
   musllinux-build:

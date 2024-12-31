@@ -106,7 +106,7 @@ jobs:
       # Install UV explicitly and resolve dependencies for Python 3.7
       - name: Install UV and resolve for Python 3.7
         run: |
-          python3.7 -m pip install uv
+          pip install uv
           uv sync --python-version 3.7 --all-extras --dev
 
       # Build wheels using UV

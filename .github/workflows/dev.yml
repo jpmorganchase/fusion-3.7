@@ -56,27 +56,23 @@ jobs:
           poetry --version
 
       # Step 5: Install project dependencies (including dev and extras)
-      - name: Install dependencies
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
+      - name: Install dependencies Rama
+        run: |          
           poetry install --all-extras --with dev
 
       # Step 6: Run linters using Tox
       - name: Run Linting
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
+        run: |          
           poetry run tox -e lint
 
       # Step 7: Run tests using Tox
       - name: Run Tests
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
+        run: |          
           poetry run tox -e test
 
       # Step 8: Build distribution artifacts using Poetry
       - name: Build Distribution
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
+        run: |          
           poetry build
 
       # Upload build artifacts for inspection or release

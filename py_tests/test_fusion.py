@@ -1,14 +1,14 @@
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Generator
+from typing import Any, Dict
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 import requests
-import requests_mock
 
-from fusion.fusion import Fusion
+from pyfusion.fusion import Fusion
 
 
 @pytest.fixture
@@ -20,44 +20,43 @@ def example_creds_dict() -> Dict[str, str]:
 
 
 @pytest.fixture
-def mock_session() -> Generator[requests_mock.Mocker, None, None]:
-    """Fixture to mock a requests.Session object."""
-    with requests_mock.Mocker() as mocker:
-        yield mocker
-
-
-@pytest.fixture
 def mock_response_data() -> Dict[str, Any]:
     """Fixture providing mock API response data."""
     return {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
 
 
-def test_call_for_dataframe(
-    mock_session: requests_mock.Mocker, mock_response_data: Dict[str, Any]
-) -> None:
+def test_call_for_dataframe(mock_response_data: Dict[str, Any]) -> None:
     """Test `_call_for_dataframe` static method."""
     url = "https://api.example.com/data"
-    mock_session.get(url, json=mock_response_data)
-    session = requests.Session()
 
-    df = Fusion._call_for_dataframe(url, session)
-    assert isinstance(df, pd.DataFrame)
-    assert df.shape == (2, 2)
-    assert list(df.columns) == ["id", "name"]
-    assert df.iloc[0]["id"] == 1
-    assert df.iloc[0]["name"] == "Resource 1"
+    with patch("requests.Session.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_response_data
+        mock_get.return_value.raise_for_status = lambda: None
+
+        session = requests.Session()
+        df = Fusion._call_for_dataframe(url, session)
+
+        assert isinstance(df, pd.DataFrame)
+        assert df.shape == (2, 2)
+        assert list(df.columns) == ["id", "name"]
+        assert df.iloc[0]["id"] == 1
+        assert df.iloc[0]["name"] == "Resource 1"
 
 
-def test_call_for_bytes_object(mock_session: requests_mock.Mocker) -> None:
+def test_call_for_bytes_object() -> None:
     """Test `_call_for_bytes_object` static method."""
     url = "https://api.example.com/file"
     mock_content = b"Mock file content"
-    mock_session.get(url, content=mock_content)
-    session = requests.Session()
 
-    byte_obj = Fusion._call_for_bytes_object(url, session)
-    assert isinstance(byte_obj, BytesIO)
-    assert byte_obj.read() == mock_content
+    with patch("requests.Session.get") as mock_get:
+        mock_get.return_value.content = mock_content
+        mock_get.return_value.raise_for_status = lambda: None
+
+        session = requests.Session()
+        byte_obj = Fusion._call_for_bytes_object(url, session)
+
+        assert isinstance(byte_obj, BytesIO)
+        assert byte_obj.read() == mock_content
 
 
 def test_create_session(example_creds_dict: Dict[str, str]) -> None:
@@ -111,4 +110,3 @@ def test_use_catalog(example_creds_dict: Dict[str, str]) -> None:
 
     assert fusion._use_catalog(None) == "default_cat"
     assert fusion._use_catalog("specific_cat") == "specific_cat"
-

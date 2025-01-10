@@ -35,10 +35,10 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           poetry install --all-extras --with dev
 
-      - name: Run Linting
+      - name: Run Tox
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          poetry run ruff check --fix .
+           export PATH="$HOME/.local/bin:$PATH"
+           poetry run tox
 
       - name: Run Tests
         run: |

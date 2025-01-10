@@ -1,57 +1,87 @@
 name: Build and Test
 
+# Controls when the workflow will run
 on:
+  # Triggers the workflow on pushes to specific branches and PRs to `main`
   push:
     branches: [master, main, feature/*]
   pull_request:
     branches: [main]
+
+  # Allows manual triggering from the GitHub Actions tab
   workflow_dispatch:
 
+# Prevent duplicate runs by cancelling in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Set global environment variables
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: 1
 
 jobs:
   test-and-build:
     name: Test and Build for Python 3.7
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-20.04  # OS for the runner; ensure compatibility with Python 3.7
 
+    # Job steps
     steps:
+      # Step 1: Check out the repository
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for versioning or tags if needed
 
+      # Step 2: Set up Python 3.7.9
       - name: Set up Python 3.7.9
         uses: actions/setup-python@v5
         with:
           python-version: 3.7.9
 
+      # Step 3: Cache Poetry dependencies to speed up subsequent runs
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      # Step 4: Install Poetry
       - name: Install Poetry
         run: |
           curl -sSL https://install.python-poetry.org | python - --version 1.5.1
           export PATH="$HOME/.local/bin:$PATH"
           poetry --version
 
+      # Step 5: Install project dependencies (including dev and extras)
       - name: Install dependencies
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           poetry install --all-extras --with dev
 
-      - name: Run Tox
+      # Step 6: Run linters using Tox
+      - name: Run Linting
         run: |
-           export PATH="$HOME/.local/bin:$PATH"
-           poetry run tox
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry run tox -e lint
 
+      # Step 7: Run tests using Tox
       - name: Run Tests
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          poetry run pytest
+          poetry run tox -e test
 
+      # Step 8: Build distribution artifacts using Poetry
       - name: Build Distribution
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           poetry build
 
-    #   - name: Upload Artifacts
-    #     uses: actions/upload-artifact@v4
-    #     with:
-    #       name: dist-artifacts
-    #       path: dist/
+      # Upload build artifacts for inspection or release
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-artifacts
+          path: dist/

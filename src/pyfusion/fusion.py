@@ -1,45 +1,81 @@
-"""Main Fusion module."""
-
-from __future__ import annotations
-
 import json as js
 import logging
 import sys
 from io import BytesIO
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import Optional, Union
 
 import pandas as pd
 import requests
-
-if TYPE_CHECKING:
-    from requests import Session
+from tabulate import tabulate
 
 logger = logging.getLogger(__name__)
+VERBOSE_LVL = 25
 
 
 class Fusion:
     """Core Fusion class for API access."""
 
+    @staticmethod
+    def _call_for_dataframe(url: str, session: requests.Session) -> pd.DataFrame:
+        """Private function that calls an API endpoint and returns the data as a pandas dataframe.
+
+        Args:
+            url (str): URL for an API endpoint with valid parameters.
+            session (requests.Session): Session object for making the API call.
+
+        Returns:
+            pandas.DataFrame: A dataframe containing the requested data.
+        """
+        response = session.get(url)
+        response.raise_for_status()
+        table = response.json()["resources"]
+        ret_df = pd.DataFrame(table).reset_index(drop=True)
+        return ret_df
+
+    @staticmethod
+    def _call_for_bytes_object(url: str, session: requests.Session) -> BytesIO:
+        """Private function that calls an API endpoint and returns the data as a bytes object in memory.
+
+        Args:
+            url (str): URL for an API endpoint with valid parameters.
+            session (requests.Session): Session object for making the API call.
+
+        Returns:
+            io.BytesIO: In-memory file content.
+        """
+        response = session.get(url)
+        response.raise_for_status()
+        return BytesIO(response.content)
+
     def __init__(
         self,
-        credentials: str,
+        credentials: Union[str, dict] = "config/client_credentials.json",
         root_url: str = "https://fusion.jpmorgan.com/api/v1/",
+        download_folder: str = "downloads",
         log_level: int = logging.ERROR,
         log_path: str = ".",
     ) -> None:
         """Constructor to instantiate a new Fusion object.
 
         Args:
-            credentials (str): Path to a credentials file.
+            credentials (Union[str, dict]): A path to a credentials file or a dictionary containing credentials.
+                Defaults to 'config/client_credentials.json'.
             root_url (str): The API root URL. Defaults to "https://fusion.jpmorgan.com/api/v1/".
+            download_folder (str): The folder path where downloaded data files are saved. Defaults to "downloads".
             log_level (int): Set the logging level. Defaults to logging.ERROR.
-            log_path (str): Path where logs will be stored. Defaults to current directory.
+            log_path (str): The folder path where the log is stored. Defaults to the current directory.
         """
+        self._default_catalog = "common"
+
         self.root_url = root_url
+        self.download_folder = download_folder
+        Path(download_folder).mkdir(parents=True, exist_ok=True)
 
         if logger.hasHandlers():
             logger.handlers.clear()
         file_handler = logging.FileHandler(filename=f"{log_path}/fusion_sdk.log")
+        logging.addLevelName(VERBOSE_LVL, "VERBOSE")
         stdout_handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter(
             "%(asctime)s.%(msecs)03d %(name)s:%(levelname)s %(message)s",
@@ -50,98 +86,76 @@ class Fusion:
         logger.addHandler(file_handler)
         logger.setLevel(log_level)
 
-        # Load credentials
-        self.credentials = self._load_credentials(credentials)
-        self.session = self._create_session()
+        if isinstance(credentials, dict):
+            self.credentials = credentials
+        elif isinstance(credentials, str):
+            self.credentials = self._load_credentials(Path(credentials))
+        else:
+            raise ValueError("credentials must be a path to a credentials file or a dictionary")
 
-    def _load_credentials(self, credentials_path: str) -> dict:
+        self.session = self._create_session(self.credentials)
+
+    def __repr__(self) -> str:
+        """Object representation to list all available methods."""
+        methods = [
+            method_name
+            for method_name in dir(Fusion)
+            if callable(getattr(Fusion, method_name)) and not method_name.startswith("_")
+        ]
+        return "Fusion object \nAvailable methods:\n" + tabulate(
+            [[method_name] for method_name in methods],
+            headers=["Method Name"],
+            tablefmt="psql",
+        )
+
+    @staticmethod
+    def _load_credentials(credentials_path: Path) -> dict:
         """Load credentials from a JSON file.
 
         Args:
-            credentials_path (str): Path to the credentials file.
+            credentials_path (Path): Path to the credentials file.
 
         Returns:
-            dict: Credentials data.
-
-        Raises:
-            ValueError: If the credentials file is not found.
+            dict: Loaded credentials.
         """
-        try:
-            with open(credentials_path) as file:
-                return js.load(file)
-        except FileNotFoundError as err:
-            raise ValueError(f"Credentials file not found at {credentials_path}") from err
+        with credentials_path.open() as file:
+            return js.load(file)
 
-    def _create_session(self) -> Session:
-        """Create and configure a requests session.
+    @staticmethod
+    def _create_session(credentials: dict) -> requests.Session:
+        """Create and return a session configured with the provided credentials.
+
+        Args:
+            credentials (dict): Dictionary containing session credentials.
 
         Returns:
-            Session: Configured requests session.
+            requests.Session: Configured requests session.
         """
         session = requests.Session()
-        session.headers.update({"Authorization": f"Bearer {self.credentials['token']}"})
+        session.headers.update({"Authorization": f"Bearer {credentials.get('token', '')}"})
         return session
 
-    @staticmethod
-    def _call_for_dataframe(url: str, session: Session) -> pd.DataFrame:
-        """Private function that calls an API endpoint and returns the data as a pandas DataFrame.
+    @property
+    def default_catalog(self) -> str:
+        """Returns the default catalog."""
+        return self._default_catalog
+
+    @default_catalog.setter
+    def default_catalog(self, catalog: str) -> None:
+        """Allow the default catalog, which is "common," to be overridden.
 
         Args:
-            url (str): URL for an API endpoint with valid parameters.
-            session (Session): Requests session with authentication.
-
-        Returns:
-            pd.DataFrame: A DataFrame containing the requested data.
+            catalog (str): The catalog to use as the default.
         """
-        response = session.get(url)
-        response.raise_for_status()
-        data = response.json().get("resources", [])
-        return pd.DataFrame(data).reset_index(drop=True)
+        self._default_catalog = catalog
 
-    @staticmethod
-    def _call_for_bytes_object(url: str, session: Session) -> BytesIO:
-        """Private function that calls an API endpoint and returns the data as a BytesIO object.
+    def _use_catalog(self, catalog: Optional[str]) -> str:
+        """Determine which catalog to use in an API call.
 
         Args:
-            url (str): URL for an API endpoint with valid parameters.
-            session (Session): Requests session with authentication.
+            catalog (Optional[str]): The catalog value passed as an argument to an API function wrapper.
 
         Returns:
-            BytesIO: In-memory file content.
+            str: The catalog to use.
         """
-        response = session.get(url)
-        response.raise_for_status()
-        return BytesIO(response.content)
-
-    def list_catalogs(self) -> pd.DataFrame:
-        """Lists the catalogs available to the API account.
-
-        Returns:
-            pd.DataFrame: A DataFrame with a row for each catalog.
-        """
-        url = f"{self.root_url}catalogs/"
-        return self._call_for_dataframe(url, self.session)
-
-    def catalog_resources(self, catalog: str) -> pd.DataFrame:
-        """List the resources contained within a catalog.
-
-        Args:
-            catalog (str): Catalog identifier.
-
-        Returns:
-            pd.DataFrame: A DataFrame with a row for each resource in the catalog.
-        """
-        url = f"{self.root_url}catalogs/{catalog}"
-        return self._call_for_dataframe(url, self.session)
-
-    def download_as_dataframe(self, endpoint: str) -> pd.DataFrame:
-        """Download data from a specified API endpoint and return it as a DataFrame.
-
-        Args:
-            endpoint (str): API endpoint relative to the root URL.
-
-        Returns:
-            pd.DataFrame: Data from the API as a DataFrame.
-        """
-        url = f"{self.root_url}{endpoint}"
-        return self._call_for_dataframe(url, self.session)
+        return catalog if catalog else self.default_catalog

@@ -13,7 +13,8 @@ env:
 jobs:
   test-and-build:
     name: Test and Build for Python 3.7
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -29,6 +29,7 @@ certifi = "<=2018.11.8"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"
+tox = "<4"
 
 [tool.ruff]
 line-length = 120

@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import requests
 
-from pyfusion.fusion import Fusion
+from fusion37.fusion import Fusion
 
 
 @pytest.fixture

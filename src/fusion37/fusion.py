@@ -4,15 +4,21 @@ import logging
 import sys
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, List, Tuple
+import re
+import warnings
 
+from joblib import delayed, Parallel
+import fsspec
 import pandas as pd
 import requests
 from tabulate import tabulate
+from tqdm import tqdm
 
 from .credentials import FusionCredentials
-from .utils import get_session, normalise_dt_param_str
+from .utils import get_session, normalise_dt_param_str, cpu_count, RECOGNIZED_FORMATS, tqdm_joblib, distribution_to_url, distribution_to_filename, get_default_fs
 from .exceptions import *
+from .fusion_filesystem import FusionHTTPFileSystem
 
 logger = logging.getLogger(__name__)
 VERBOSE_LVL = 25
@@ -58,8 +64,10 @@ class Fusion:
         credentials: Union[str, dict] = "config/client_credentials.json",
         root_url: str = "https://fusion.jpmorgan.com/api/v1/",
         download_folder: str = "downloads",
+        *,
         log_level: int = logging.ERROR,
         log_path: str = ".",
+        fs: fsspec.filesystem = None,
     ) -> None:
         """Constructor to instantiate a new Fusion object.
 
@@ -70,6 +78,7 @@ class Fusion:
             download_folder (str): The folder path where downloaded data files are saved. Defaults to "downloads".
             log_level (int): Set the logging level. Defaults to logging.ERROR.
             log_path (str): The folder path where the log is stored. Defaults to the current directory.
+            fs (fsspec.filesystem): filesystem.
         """
         self._default_catalog = "common"
 
@@ -99,6 +108,7 @@ class Fusion:
             raise ValueError("credentials must be a path to a credentials file or a dictionary")
 
         self.session = get_session(self.credentials, self.root_url)
+        self.fs = fs if fs else get_default_fs()
 
     def __repr__(self) -> str:
         """Object representation to list all available methods."""
@@ -137,6 +147,14 @@ class Fusion:
             str: The catalog to use.
         """
         return catalog if catalog else self.default_catalog
+
+    def get_fusion_filesystem(self) -> FusionHTTPFileSystem:
+        """Creates Fusion Filesystem.
+
+        Returns: Fusion Filesystem
+
+        """
+        return FusionHTTPFileSystem(client_kwargs={"root_url": self.root_url, "credentials": self.credentials})
 
     def list_catalogs(self, output: bool = False) -> pd.DataFrame:
         """Lists the catalogs available to the API account.
@@ -561,3 +579,119 @@ class Fusion:
         tups = [(catalog, dataset, series, dataset_format) for series in required_series]
 
         return tups
+
+    def download(  # noqa: PLR0912, PLR0913
+            self,
+            dataset: str,
+            dt_str: str = "latest",
+            dataset_format: str = "parquet",
+            catalog: Optional[str] = None,
+            n_par: Optional[int] = None,
+            show_progress: bool = True,
+            force_download: bool = False,
+            download_folder: Optional[str] = None,
+            return_paths: bool = False,
+            partitioning: Optional[str] = None,
+            preserve_original_name: bool = False,
+    ) -> Optional[List[Tuple[bool, str, Optional[str]]]]:
+        """Downloads the requested distributions of a dataset to disk.
+
+        Args:
+            dataset (str): A dataset identifier
+            dt_str (str, optional): Either a single date or a range identified by a start or end date,
+                or both separated with a ":". Defaults to 'latest' which will return the most recent
+                instance of the dataset. If more than one series member exists on the latest date, the
+                series member identifiers will be sorted alphabetically and the last one will be downloaded.
+            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            n_par (int, optional): Specify how many distributions to download in parallel.
+                Defaults to all cpus available.
+            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            force_download (bool, optional): If True then will always download a file even
+                if it is already on disk. Defaults to True.
+            download_folder (str, optional): The path, absolute or relative, where downloaded files are saved.
+                Defaults to download_folder as set in __init__
+            return_paths (bool, optional): Return paths and success statuses of the downloaded files.
+            partitioning (str, optional): Partitioning specification.
+            preserve_original_name (bool, optional): Preserve the original name of the file. Defaults to False.
+
+        Returns:
+
+        """
+        catalog = self._use_catalog(catalog)
+
+        valid_date_range = re.compile(r"^(\d{4}\d{2}\d{2})$|^((\d{4}\d{2}\d{2})?([:])(\d{4}\d{2}\d{2})?)$")
+
+        if valid_date_range.match(dt_str) or dt_str == "latest":
+            required_series = self._resolve_distro_tuples(dataset, dt_str, dataset_format, catalog)
+        else:
+            # sample data is limited to csv
+            if dt_str == "sample":
+                dataset_format = self.list_distributions(dataset, dt_str, catalog)["identifier"].iloc[0]
+            required_series = [(catalog, dataset, dt_str, dataset_format)]
+
+        if dataset_format not in RECOGNIZED_FORMATS + ["raw"]:
+            raise ValueError(f"Dataset format {dataset_format} is not supported")
+
+        if not download_folder:
+            download_folder = self.download_folder
+
+        download_folders = [download_folder] * len(required_series)
+
+        if partitioning == "hive":
+            members = [series[2].strip("/") for series in required_series]
+            download_folders = [
+                f"{download_folders[i]}/{series[0]}/{series[1]}/{members[i]}"
+                for i, series in enumerate(required_series)
+            ]
+
+        for d in download_folders:
+            if not self.fs.exists(d):
+                self.fs.mkdir(d, create_parents=True)
+
+        n_par = cpu_count(n_par)
+        download_spec = [
+            {
+                "lfs": self.fs,
+                "rpath": distribution_to_url(
+                    self.root_url,
+                    series[1],
+                    series[2],
+                    series[3],
+                    series[0],
+                    is_download=True,
+                ),
+                "lpath": distribution_to_filename(
+                    download_folders[i],
+                    series[1],
+                    series[2],
+                    series[3],
+                    series[0],
+                    partitioning=partitioning,
+                ),
+                "overwrite": force_download,
+                "preserve_original_name": preserve_original_name,
+            }
+            for i, series in enumerate(required_series)
+        ]
+
+        logger.log(
+            VERBOSE_LVL,
+            f"Beginning {len(download_spec)} downloads in batches of {n_par}",
+        )
+        if show_progress:
+            with tqdm_joblib(tqdm(total=len(download_spec))):
+                res = Parallel(n_jobs=n_par)(
+                    delayed(self.get_fusion_filesystem().download)(**spec) for spec in download_spec
+                )
+        else:
+            # res = [self.get_fusion_filesystem().download(**download_spec[0])]
+            res = Parallel(n_jobs=n_par)(
+                delayed(self.get_fusion_filesystem().download)(**spec) for spec in download_spec
+            )
+
+        if (len(res) > 0) and (not all(r[0] for r in res)):
+            for r in res:
+                if not r[0]:
+                    warnings.warn(f"The download of {r[1]} was not successful", stacklevel=2)
+        return res if return_paths else None

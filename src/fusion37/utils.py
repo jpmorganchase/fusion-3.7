@@ -10,11 +10,10 @@ import multiprocessing as mp
 import os
 import re
 import ssl
-from contextlib import nullcontext
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import urlparse, urlunparse
 
 import aiohttp
@@ -35,7 +34,6 @@ if TYPE_CHECKING:
 
     from .credentials import FusionCredentials
 
-    from .types import PyArrowFilterT
 
 logger = logging.getLogger(__name__)
 VERBOSE_LVL = 25
@@ -139,7 +137,7 @@ def tqdm_joblib(tqdm_object: tqdm) -> Generator[tqdm, None, None]:  # type: igno
         tqdm_object.close()
 
 
-def cpu_count(thread_pool_size: int | None = None, is_threading: bool = False) -> int:
+def cpu_count(thread_pool_size: Optional[int] = None, is_threading: bool = False) -> int:
     """Determine the number of cpus/threads for parallelization.
 
     Args:
@@ -160,7 +158,7 @@ def cpu_count(thread_pool_size: int | None = None, is_threading: bool = False) -
     return thread_pool_size
 
 
-def _normalise_dt_param(dt: str | int | datetime | date) -> str:
+def _normalise_dt_param(dt: Union[str, int, datetime, date]) -> str:
     """Convert dates into a normalised string representation.
 
     Args:
@@ -198,7 +196,7 @@ def _normalise_dt_param(dt: str | int | datetime | date) -> str:
     raise ValueError(f"{dt} is not in a recognised data format")
 
 
-def normalise_dt_param_str(dt: str) -> tuple[str, ...]:
+def normalise_dt_param_str(dt: str) -> Tuple[str, ...]:
     """Convert a date parameter which may be a single date or a date range into a tuple.
 
     Args:
@@ -221,7 +219,7 @@ def distribution_to_filename(
     datasetseries: str,
     file_format: str,
     catalog: str = "common",
-    partitioning: str | None = None,
+    partitioning: Optional[str] = None,
 ) -> str:
     """Returns a filename representing a dataset distribution.
 
@@ -250,7 +248,7 @@ def distribution_to_filename(
     return f"{root_folder}{sep}{file_name}"
 
 
-def _filename_to_distribution(file_name: str) -> tuple[str, str, str, str]:
+def _filename_to_distribution(file_name: str) -> Tuple[str, str, str, str]:
     """Breaks a filename down into the components that represent a dataset distribution in the catalog.
 
     Args:
@@ -347,7 +345,7 @@ async def get_client(credentials: FusionCredentials, **kwargs: Any) -> FusionAio
 
 
 def get_session(
-    credentials: FusionCredentials, root_url: str, get_retries: int | Retry | None = None
+    credentials: FusionCredentials, root_url: str, get_retries: Optional[Union[int, Retry]] = None
 ) -> requests.Session:
     """Create a new http session and set parameters.
 
@@ -375,7 +373,7 @@ def get_session(
     return session
 
 
-def validate_file_names(paths: list[str], fs_fusion: fsspec.AbstractFileSystem) -> list[bool]:
+def validate_file_names(paths: List[str], fs_fusion: fsspec.AbstractFileSystem) -> List[bool]:
     """Validate if the file name format adheres to the standard.
 
     Args:
@@ -467,10 +465,10 @@ def upload_files(  # noqa: PLR0913
     multipart: bool = True,
     chunk_size: int = 5 * 2**20,
     show_progress: bool = True,
-    from_date: str | None = None,
-    to_date: str | None = None,
-    additional_headers: dict[str, str] | None = None,
-) -> list[tuple[bool, str, str | None]]:
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    additional_headers: Optional[Dict[str, str]]= None,
+) -> List[Tuple[Optional[Union[bool, str]]]]:
     """Upload file into Fusion.
 
     Args:

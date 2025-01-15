@@ -35,7 +35,6 @@ pytz = "*"
 tqdm = "<=4.48.0"
 cryptography = "<=3.1.0"
 pyjwt = "<=1.5.3"
-fsspec = "<=2023.1.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"

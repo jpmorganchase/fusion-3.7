@@ -330,8 +330,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
                     output_file.write(chunk)
                     logger.log(
                         VERBOSE_LVL,
-                        "Wrote %s - %s bytes to %s"
-                        % (start, end, output_file.path),  # noqa: UP031
+                        f"Wrote {start} - {end} bytes to {output_file.path}"
                     )
                 else:
                     response.raise_for_status()
@@ -490,11 +489,11 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
 
         rpath = self._decorate_url(rpath) if isinstance(rpath, str) else rpath
         if not lfs.exists(lpath):
-            try:
+            try:  # noqa: SIM105
                 lfs.mkdir(
                     Path(lpath).parent, exist_ok=True, create_parents=True
                 )  # noqa: ignore
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:  # noqa: BLE001, SIM105, F841
                 pass
 
         async def get_headers() -> Any:
@@ -506,7 +505,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
         try:
             headers = sync(self.loop, get_headers)
             if (
-                "x-jpmc-file-name" in headers.keys() and preserve_original_name
+                "x-jpmc-file-name" in headers.keys() and preserve_original_name  # noqa: SIM118
             ):  # noqa: SIM118
                 file_name = headers.get("x-jpmc-file-name")
                 lpath = Path(lpath).parent.joinpath(file_name)

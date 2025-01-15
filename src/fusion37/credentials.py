@@ -1,8 +1,9 @@
 import json
 import logging
 import os
+import datetime
 from datetime import datetime as dt
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any
 from urllib.parse import urlparse
 
 import jwt
@@ -122,7 +123,7 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
 
 class AuthToken:
     def __init__(self, token: str, expires_in_secs: Optional[int] = None) -> None:
-        current_time = int(dt.now(dt.timezone.utc).timestamp())
+        current_time = int(dt.now(datetime.timezone.utc).timestamp())
         self.token = token
         if expires_in_secs is not None:
             self.expiry = current_time + expires_in_secs
@@ -134,7 +135,7 @@ class AuthToken:
 
     def expires_in_secs(self) -> Optional[int]:
         if self.expiry is not None:
-            return self.expiry - int(dt.now(dt.timezone.utc).timestamp())
+            return self.expiry - int(dt.now(datetime.timezone.utc).timestamp())
         return None
 
     @staticmethod
@@ -273,7 +274,7 @@ class FusionCredentials:
     def from_bearer_token(
         cls,
         bearer_token: str,
-        bearer_token_expiry: Optional[dt.datetime] = None,
+        bearer_token_expiry: Optional[datetime.datetime] = None,
         proxies: Optional[Dict] = None,
         fusion_e2e: Optional[bool] = None,
         headers: Optional[Dict] = None,
@@ -283,13 +284,13 @@ class FusionCredentials:
         expiry_secs = None
         if bearer_token_expiry is not None:
             # bearer_token_expiry is a date, we assume midnight expiration
-            expiry_dt = dt.datetime(
+            expiry_dt = datetime.datetime(
                 bearer_token_expiry.year,
                 bearer_token_expiry.month,
                 bearer_token_expiry.day,
             )
             expiry_secs = int(expiry_dt.timestamp()) - int(
-                dt.now(dt.timezone.utc).timestamp()
+                dt.now(datetime.timezone.utc).timestamp()
             )
         return cls(
             bearer_token=AuthToken.from_token(bearer_token, expiry_secs),
@@ -382,7 +383,7 @@ class FusionCredentials:
         if self.kid and self.private_key:
             # JWT-based client assertion
             # Construct claims
-            iat = int(dt.now(dt.timezone.utc).timestamp())
+            iat = int(dt.now(datetime.timezone.utc).timestamp())
             exp = iat + 3600
             claims = {
                 "iss": self.client_id or "",

@@ -1,9 +1,9 @@
+import datetime
 import json
 import logging
 import os
-import datetime
 from datetime import datetime as dt
-from typing import Dict, Optional, Tuple, Any
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import jwt

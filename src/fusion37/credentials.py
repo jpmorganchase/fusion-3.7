@@ -1,17 +1,16 @@
-import os
 import json
-import jwt
 import logging
-import requests
-import datetime
+import os
 from datetime import datetime as dt
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
-from typing import Optional, Dict
 
-from .exceptions import *
+import jwt
+import requests
+
+from .exceptions import CredentialError
 
 logger = logging.getLogger(__name__)
-
 # Constants analogous to Rust defaults
 DEFAULT_GRANT_TYPE = "client_credentials"
 DEFAULT_AUTH_URL = "https://authe.jpmorgan.com/as/token.oauth2"
@@ -23,7 +22,7 @@ class ProxyType:
     HTTPS = "https"
 
     @staticmethod
-    def from_str(s: str):
+    def from_str(s: str) -> str:
         if s == "http":
             return ProxyType.HTTP
         elif s == "https":
@@ -37,7 +36,7 @@ def untyped_proxies(proxies: Dict[str, str]) -> Dict[str, str]:
     return proxies
 
 
-def client_builder_from_proxies(proxies: Dict[str, str]):
+def client_builder_from_proxies(proxies: Dict[str, str]) -> Dict[str, str]:
     # In Python, we can just pass 'proxies' to requests.
     # This function in Rust sets up a client with given proxies.
     # We'll store these for later use in get/post requests.
@@ -81,7 +80,7 @@ def find_cfg_file(file_path: str) -> str:
 def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
     logger.debug(f"Trying to form fusion auth url from: {url}")
     parsed = urlparse(url)
-    segments = [seg for seg in parsed.path.split('/') if seg]
+    segments = [seg for seg in parsed.path.split("/") if seg]
 
     # Not a distribution request. No need to authorize
     if "distributions" not in segments:
@@ -92,22 +91,26 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
     try:
         cat_idx = segments.index("catalogs")
         catalog_name = segments[cat_idx + 1]
-    except (ValueError, IndexError):
-        raise CredentialError("'catalogs' segment not found or catalog name missing in the path")
+    except (ValueError, IndexError) as err:
+        raise CredentialError(
+            "'catalogs' segment not found or catalog name missing in the path"
+        ) from err
 
     # Extract dataset_name
     try:
         ds_idx = segments.index("datasets")
         dataset_name = segments[ds_idx + 1]
-    except (ValueError, IndexError):
-        raise CredentialError("'datasets' segment not found or dataset name missing in the path")
+    except (ValueError, IndexError) as err:
+        raise CredentialError(
+            "'datasets' segment not found or dataset name missing in the path"
+        ) from err
 
     logger.debug(f"Found Catalog: {catalog_name}, Dataset: {dataset_name}")
 
     # Reconstruct path until datasets + 1 segment: /catalogs/.../datasets/...
     # Then append /authorize/token
     # segments[:ds_idx+2] gives us everything including the dataset name
-    new_path_segments = segments[:ds_idx+2] + ["authorize", "token"]
+    new_path_segments = segments[: ds_idx + 2] + ["authorize", "token"]
     new_path = "/" + "/".join(new_path_segments)
 
     # Construct the new URL
@@ -118,8 +121,8 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
 
 
 class AuthToken:
-    def __init__(self, token: str, expires_in_secs: Optional[int] = None):
-        current_time = int(dt.now(datetime.timezone.utc).timestamp())
+    def __init__(self, token: str, expires_in_secs: Optional[int] = None) -> None:
+        current_time = int(dt.now(dt.timezone.utc).timestamp())
         self.token = token
         if expires_in_secs is not None:
             self.expiry = current_time + expires_in_secs
@@ -131,29 +134,38 @@ class AuthToken:
 
     def expires_in_secs(self) -> Optional[int]:
         if self.expiry is not None:
-            return self.expiry - int(dt.now(datetime.timezone.utc).timestamp())
+            return self.expiry - int(dt.now(dt.timezone.utc).timestamp())
         return None
 
     @staticmethod
-    def from_token(token: str, expires_in_secs: Optional[int] = None):
+    def from_token(token: str, expires_in_secs: Optional[int] = None) -> "AuthToken":
         return AuthToken(token, expires_in_secs)
 
-    def as_bearer_header(self):
+    def as_bearer_header(self) -> Tuple[str, str]:
         return ("Authorization", f"Bearer {self.token}")
 
-    def as_fusion_header(self):
+    def as_fusion_header(self) -> Tuple[str, str]:
         return ("Fusion-Authorization", f"Bearer {self.token}")
 
 
 class FusionCredsPersistent:
-    def __init__(self,
-                 client_id=None, client_secret=None,
-                 username=None, password=None,
-                 resource=None, auth_url=None,
-                 root_url=None,
-                 proxies=None, grant_type=None,
-                 fusion_e2e=None, headers=None,
-                 kid=None, private_key=None, **kwargs):
+    def __init__(
+        self,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        resource: Optional[str] = None,
+        auth_url: Optional[str] = None,
+        root_url: Optional[str] = None,
+        proxies: Optional[Dict[str, str]] = None,
+        grant_type: Optional[str] = None,
+        fusion_e2e: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        kid: Optional[str] = None,
+        private_key: Optional[str] = None,
+        **kwargs: Dict[str, Any],
+    ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
         self.username = username
@@ -170,20 +182,22 @@ class FusionCredsPersistent:
 
 
 class FusionCredentials:
-    def __init__(self,
-                 client_id: Optional[str] = None,
-                 client_secret: Optional[str] = None,
-                 username: Optional[str] = None,
-                 password: Optional[str] = None,
-                 resource: Optional[str] = None,
-                 auth_url: Optional[str] = None,
-                 bearer_token: Optional[AuthToken] = None,
-                 proxies: Optional[Dict[str, str]] = None,
-                 grant_type: Optional[str] = None,
-                 fusion_e2e: Optional[str] = None,
-                 headers: Optional[Dict[str, str]] = None,
-                 kid: Optional[str] = None,
-                 private_key: Optional[str] = None):
+    def __init__(
+        self,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        resource: Optional[str] = None,
+        auth_url: Optional[str] = None,
+        bearer_token: Optional[AuthToken] = None,
+        proxies: Optional[Dict[str, str]] = None,
+        grant_type: Optional[str] = None,
+        fusion_e2e: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        kid: Optional[str] = None,
+        private_key: Optional[str] = None,
+    ) -> None:
 
         self.client_id = client_id
         self.client_secret = client_secret
@@ -202,16 +216,18 @@ class FusionCredentials:
         self.http_proxies = client_builder_from_proxies(self.proxies)
 
     @classmethod
-    def from_client_id(cls,
-                       client_id=None,
-                       client_secret=None,
-                       resource=None,
-                       auth_url=None,
-                       proxies=None,
-                       fusion_e2e=None,
-                       headers=None,
-                       kid=None,
-                       private_key=None):
+    def from_client_id(
+        cls,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        resource: Optional[str] = None,
+        auth_url: Optional[str] = None,
+        proxies: Optional[Dict[str, str]] = None,  # Added type annotation for proxies
+        fusion_e2e: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        kid: Optional[str] = None,
+        private_key: Optional[str] = None,
+    ) -> "FusionCredentials":
         return cls(
             client_id=client_id,
             client_secret=client_secret,
@@ -222,21 +238,23 @@ class FusionCredentials:
             fusion_e2e=fusion_e2e,
             headers=headers,
             kid=kid,
-            private_key=private_key
+            private_key=private_key,
         )
 
     @classmethod
-    def from_user_id(cls,
-                     client_id=None,
-                     username=None,
-                     password=None,
-                     resource=None,
-                     auth_url=None,
-                     proxies=None,
-                     fusion_e2e=None,
-                     headers=None,
-                     kid=None,
-                     private_key=None):
+    def from_user_id(
+        cls,
+        client_id: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        resource: Optional[str] = None,
+        auth_url: Optional[str] = None,
+        proxies: Optional[Dict] = None,
+        fusion_e2e: Optional[bool] = None,
+        headers: Optional[Dict] = None,
+        kid: Optional[str] = None,
+        private_key: Optional[str] = None,
+    ) -> "FusionCredentials":
         return cls(
             client_id=client_id,
             username=username,
@@ -248,42 +266,48 @@ class FusionCredentials:
             fusion_e2e=fusion_e2e,
             headers=headers,
             kid=kid,
-            private_key=private_key
+            private_key=private_key,
         )
 
     @classmethod
-    def from_bearer_token(cls,
-                          bearer_token=None,
-                          bearer_token_expiry=None,
-                          proxies=None,
-                          fusion_e2e=None,
-                          headers=None):
+    def from_bearer_token(
+        cls,
+        bearer_token: str,
+        bearer_token_expiry: Optional[dt.datetime] = None,
+        proxies: Optional[Dict] = None,
+        fusion_e2e: Optional[bool] = None,
+        headers: Optional[Dict] = None,
+    )-> "FusionCredentials":
         if bearer_token is None:
             raise ValueError("Bearer token not provided")
         expiry_secs = None
         if bearer_token_expiry is not None:
             # bearer_token_expiry is a date, we assume midnight expiration
-            expiry_dt = datetime.datetime(bearer_token_expiry.year,
-                                          bearer_token_expiry.month,
-                                          bearer_token_expiry.day)
-            expiry_secs = int(expiry_dt.timestamp()) - int(dt.now(datetime.timezone.utc).timestamp())
+            expiry_dt = dt.datetime(
+                bearer_token_expiry.year,
+                bearer_token_expiry.month,
+                bearer_token_expiry.day,
+            )
+            expiry_secs = int(expiry_dt.timestamp()) - int(
+                dt.now(dt.timezone.utc).timestamp()
+            )
         return cls(
             bearer_token=AuthToken.from_token(bearer_token, expiry_secs),
             proxies=proxies,
             grant_type="bearer",
             fusion_e2e=fusion_e2e,
-            headers=headers
+            headers=headers,
         )
 
     @classmethod
-    def from_file(cls, file_path):
+    def from_file(cls, file_path: str) -> "FusionCredentials":
         found_path = find_cfg_file(file_path)
-        with open(found_path, 'r') as f:
+        with open(found_path) as f:
             contents = f.read()
         try:
             creds_data = json.loads(contents)
         except json.JSONDecodeError as e:
-            raise CredentialError(f"Invalid JSON: {e}\nContents:\n{contents}")
+            raise CredentialError(f"Invalid JSON: {e}\nContents:\n{contents}") from e
 
         creds = FusionCredsPersistent(**creds_data)
 
@@ -292,7 +316,9 @@ class FusionCredentials:
             raise CredentialError("Missing client ID")
 
         if creds.grant_type == "client_credentials":
-            client_secret = creds.client_secret or os.environ.get("FUSION_CLIENT_SECRET")
+            client_secret = creds.client_secret or os.environ.get(
+                "FUSION_CLIENT_SECRET"
+            )
             if client_secret is None:
                 raise CredentialError("Missing client secret")
             return cls.from_client_id(
@@ -304,7 +330,7 @@ class FusionCredentials:
                 fusion_e2e=creds.fusion_e2e,
                 headers=creds.headers,
                 kid=creds.kid,
-                private_key=creds.private_key
+                private_key=creds.private_key,
             )
         elif creds.grant_type == "bearer":
             return cls.from_bearer_token(
@@ -325,18 +351,22 @@ class FusionCredentials:
                 fusion_e2e=creds.fusion_e2e,
                 headers=creds.headers,
                 kid=creds.kid,
-                private_key=creds.private_key
+                private_key=creds.private_key,
             )
         else:
             raise ValueError("Unrecognized grant type")
 
-    def put_bearer_token(self, bearer_token: str, expires_in_secs: Optional[int] = None):
+    def put_bearer_token(
+        self, bearer_token: str, expires_in_secs: Optional[int] = None
+    ) -> None:
         self.bearer_token = AuthToken.from_token(bearer_token, expires_in_secs)
 
-    def put_fusion_token(self, token_key: str, token: str, expires_in_secs: Optional[int] = None):
+    def put_fusion_token(
+        self, token_key: str, token: str, expires_in_secs: Optional[int] = None
+    ) -> None:
         self.fusion_token[token_key] = AuthToken.from_token(token, expires_in_secs)
 
-    def _refresh_bearer_token(self, force=True, max_remain_secs=30):
+    def _refresh_bearer_token(self, force: bool = True, max_remain_secs: int = 30) -> bool:
         if not force and self.bearer_token is not None:
             # Check expiration
             if not self.bearer_token.is_expirable():
@@ -352,7 +382,7 @@ class FusionCredentials:
         if self.kid and self.private_key:
             # JWT-based client assertion
             # Construct claims
-            iat = int(dt.now(datetime.timezone.utc).timestamp())
+            iat = int(dt.now(dt.timezone.utc).timestamp())
             exp = iat + 3600
             claims = {
                 "iss": self.client_id or "",
@@ -360,20 +390,25 @@ class FusionCredentials:
                 "sub": self.client_id or "",
                 "iat": iat,
                 "exp": exp,
-                "jti": "id001"
+                "jti": "id001",
             }
             private_key_jwt = jwt.encode(
-                claims,
-                self.private_key,
-                algorithm="RS256",
-                headers={"kid": self.kid}
+                claims, self.private_key, algorithm="RS256", headers={"kid": self.kid}
             )
             payload = [
                 ("grant_type", self.grant_type),
                 ("client_id", self.client_id or ""),
-                ("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"),
-                ("client_assertion", private_key_jwt if isinstance(private_key_jwt, str) else private_key_jwt.decode('utf-8')),
-                ("resource", self.resource or "")
+                (
+                    "client_assertion_type",
+                    "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+                ),
+                (
+                    "client_assertion",
+                    private_key_jwt
+                    if isinstance(private_key_jwt, str)
+                    else private_key_jwt.decode("utf-8"),
+                ),
+                ("resource", self.resource or ""),
             ]
         else:
             if self.grant_type == "client_credentials":
@@ -381,7 +416,7 @@ class FusionCredentials:
                     ("grant_type", self.grant_type),
                     ("client_id", self.client_id or ""),
                     ("client_secret", self.client_secret or ""),
-                    ("aud", self.resource or "")
+                    ("aud", self.resource or ""),
                 ]
             elif self.grant_type == "password":
                 payload = [
@@ -389,15 +424,17 @@ class FusionCredentials:
                     ("client_id", self.client_id or ""),
                     ("username", self.username or ""),
                     ("password", self.password or ""),
-                    ("resource", self.resource or "")
+                    ("resource", self.resource or ""),
                 ]
             else:
                 raise ValueError("Unrecognized grant type")
 
-        response = requests.post(self.auth_url,
-                                 headers={"User-Agent": f"fusion-python-sdk {VERSION}"},
-                                 data=payload,
-                                 proxies=self.http_proxies)
+        response = requests.post(
+            self.auth_url,
+            headers={"User-Agent": f"fusion-python-sdk {VERSION}"},
+            data=payload,
+            proxies=self.http_proxies,
+        )
         if response.status_code != 200:
             raise CredentialError(f"Could not get bearer token: {response.text}")
         res_json = response.json()
@@ -408,13 +445,13 @@ class FusionCredentials:
         self.put_bearer_token(token, expires_in)
         return True
 
-    def _gen_fusion_token(self, url: str):
+    def _gen_fusion_token(self, url: str) -> Optional[Tuple[str, Optional[int]]]:
         if not self.bearer_token:
             raise CredentialError("Bearer token is missing")
 
         headers = {
             "Authorization": f"Bearer {self.bearer_token.token}",
-            "User-Agent": f"fusion-python-sdk {VERSION}"
+            "User-Agent": f"fusion-python-sdk {VERSION}",
         }
 
         response = requests.get(url, headers=headers, proxies=self.http_proxies)
@@ -430,9 +467,7 @@ class FusionCredentials:
         # Refresh bearer token if needed
         self._refresh_bearer_token(force=False, max_remain_secs=900)  # 15 mins
 
-        ret = {
-            "User-Agent": f"fusion-python-sdk {VERSION}"
-        }
+        ret = {"User-Agent": f"fusion-python-sdk {VERSION}"}
         if self.fusion_e2e:
             ret["fusion-e2e"] = self.fusion_e2e
 

@@ -23,7 +23,7 @@ from fsspec.utils import nullcontext
 
 from .credentials import FusionCredentials
 
-from .utils import get_client, get_default_fs, get_session
+from .utils import get_client, get_default_fs, get_session, cpu_count
 
 logger = logging.getLogger(__name__)
 VERBOSE_LVL = 25
@@ -507,7 +507,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             lpath = default_fs.open(lpath, "wb")
 
         rpath = self._decorate_url(rpath) if isinstance(rpath, str) else rpath
-        n_threads = kwargs.get("n_threads", 1)
+        n_threads = cpu_count(is_threading=True)
         file_size = None
         if "headers" in kwargs and "Content-Length" in kwargs["headers"]:
             file_size = int(kwargs["headers"].get("Content-Length"))

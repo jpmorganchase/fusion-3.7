@@ -80,7 +80,13 @@ def find_cfg_file(file_path: str) -> str:
 
 def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
     logger.debug(f"Trying to form fusion auth url from: {url}")
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValueError("Invalid URL")
+    except ValueError as err:
+        raise CredentialError(f"Could not parse URL: {url}") from err
+        
     segments = [seg for seg in parsed.path.split("/") if seg]
 
     # Not a distribution request. No need to authorize

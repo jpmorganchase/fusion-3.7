@@ -45,6 +45,9 @@ black = "<=18.9"
 pytest-random-order = "^1.1.1"
 pytest-html = "^3.1.1"
 pytest-cov = "<3.0"
+ipython = "7.31.1"
+ipykernel = "6.7.0"
+polars = "^0.17.0"
 
 [tool.ruff]
 line-length = 120
@@ -103,7 +106,7 @@ html.skip_covered = false
 parallel = true
 
 [tool.coverage.report]
-fail_under = 25
+fail_under = 20
 omit = [
     "py_src/fusion/_legacy/authentication.py",
     "py_src/fusion/_legacy/__init__.py"

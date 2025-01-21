@@ -713,7 +713,7 @@ class Fusion:
             dataset: str,
             series_member: str,
             dataset_format: str = "parquet",
-            catalog: str | None = None,
+            catalog: Optional[str] = None,
     ) -> BytesIO:
         """Returns an instance of dataset (the distribution) as a bytes object.
 
@@ -751,7 +751,7 @@ class Fusion:
             to_date: Optional[str] = None,
             preserve_original_name: Optional[bool] = False,
             additional_headers: Optional[Dict[str, str]] = None,
-    ) -> Optional[List[Tuple[Optional[bool, str, str | None]]]]:
+    ) -> Optional[List[Tuple[bool, str, Optional[str]]]]:
         """Uploads the requested files/files to Fusion.
 
         Args:
@@ -869,7 +869,7 @@ class Fusion:
             to_date: Optional[str] = None,
             file_name: Optional[str] = None,
             **kwargs: Any,  # noqa: ARG002
-    ) -> Optional[List[Tuple[Optional[bool, str, str]]]]:
+    ) -> Optional[List[Tuple[bool, str, Optional[str]]]]:
         """Uploads data from an object in memory.
 
         Args:

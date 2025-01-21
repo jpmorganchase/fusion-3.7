@@ -16,8 +16,10 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 from .credentials import FusionCredentials
+from .dataset import Dataset
 from .exceptions import APIResponseError
 from .fusion_filesystem import FusionHTTPFileSystem
+from .product import Product
 from .utils import (
     RECOGNIZED_FORMATS,
     cpu_count,
@@ -923,3 +925,450 @@ class Fusion:
             warnings.warn(msg, stacklevel=2)
 
         return res if return_paths else None
+    
+   
+
+    def listen_to_events(
+        self,
+        last_event_id: Optional[str] = None,
+        catalog: Optional[str] = None,
+        url: str = "https://fusion.jpmorgan.com/api/v1/",
+    ) -> Optional[pd.DataFrame]:
+        """Run server sent event listener in the background. Retrieve results by running get_events.
+
+        Args:
+            last_event_id (Optional[str]): Last event ID (exclusive).
+            catalog (Optional[str]): catalog.
+            url (str): subscription url.
+        Returns:
+            Optional[pd.DataFrame]: If in_background is True then the function returns no output.
+                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
+        """
+
+        catalog = self._use_catalog(catalog)
+        import asyncio
+        import json
+        import threading
+
+        from aiohttp_sse_client import client as sse_client
+
+        from .utils import get_client
+
+        kwargs: Dict[str, Any] = {}
+        if last_event_id:
+            kwargs = {"headers": {"Last-Event-ID": last_event_id}}
+
+        async def async_events() -> None:
+            """Events sync function.
+
+            Returns:
+                None
+            """
+            timeout = 1e100
+            session = await get_client(self.credentials, timeout=timeout)
+            async with sse_client.EventSource(
+                f"{url}catalogs/{catalog}/notifications/subscribe",
+                session=session,
+                **kwargs,
+            ) as messages:
+                lst = []
+                try:
+                    async for msg in messages:
+                        event = json.loads(msg.data)
+                        lst.append(event)
+                        if self.events is None:
+                            self.events = pd.DataFrame()
+                        else:
+                            self.events = pd.concat([self.events, pd.DataFrame(lst)], ignore_index=True)
+                except TimeoutError as ex:
+                    raise ex from None
+                except BaseException:
+                    raise
+
+        _ = self.list_catalogs()  # refresh token
+        if "headers" in kwargs:
+            kwargs["headers"].update({"authorization": f"bearer {self.credentials.bearer_token}"})
+        else:
+            kwargs["headers"] = {
+                "authorization": f"bearer {self.credentials.bearer_token}",
+            }
+        if "http" in self.credentials.proxies:
+            kwargs["proxy"] = self.credentials.proxies["http"]
+        elif "https" in self.credentials.proxies:
+            kwargs["proxy"] = self.credentials.proxies["https"]
+        th = threading.Thread(target=asyncio.run, args=(async_events(),), daemon=True)
+        th.start()
+        return None
+
+    def get_events(
+        self,
+        last_event_id: Optional[str] = None,
+        catalog: Optional[str] = None,
+        in_background: bool = True,
+        url: str = "https://fusion.jpmorgan.com/api/v1/",
+    ) -> Optional[pd.DataFrame]:
+        """Run server sent event listener and print out the new events. Keyboard terminate to stop.
+
+        Args:
+            last_event_id (Optional[str]): id of the last event.
+            catalog (Optional[str]): catalog.
+            in_background (bool): execute event monitoring in the background (default = True).
+            url (str): subscription url.
+        Returns:
+            Optional[pd.DataFrame]: If in_background is True then the function returns no output.
+                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
+        """
+
+        catalog = self._use_catalog(catalog)
+        if not in_background:
+            from sseclient import SSEClient
+
+            _ = self.list_catalogs()  # refresh token
+            interrupted = False
+            messages = SSEClient(
+                session=self.session,
+                url=f"{url}catalogs/{catalog}/notifications/subscribe",
+                last_id=last_event_id,
+                headers={
+                    "authorization": f"bearer {self.credentials.bearer_token}",
+                },
+            )
+            lst = []
+            try:
+                for msg in messages:
+                    event = js.loads(msg.data)
+                    if event["type"] != "HeartBeatNotification":
+                        lst.append(event)
+            except KeyboardInterrupt:
+                interrupted = True
+            except Exception as e:
+                raise e
+            finally:
+                result = pd.DataFrame(lst) if interrupted or lst else None
+            return result
+        else:
+            return self.events
+        
+    def list_dataset_lineage(
+        self,
+        dataset_id: str,
+        catalog: Optional[str] = None,
+        output: bool = False,
+        max_results: int = -1,
+    ) -> pd.DataFrame:
+        """List the upstream and downstream lineage of the dataset.
+
+        Args:
+            dataset_id (str): A dataset identifier.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            output (bool, optional): If True, then print the dataframe. Defaults to False.
+            max_results (int, optional): Limit the number of rows returned in the dataframe.
+                Defaults to -1, which returns all results.
+
+        Returns:
+            pd.DataFrame: A dataframe with a row for each resource.
+
+        Raises:
+            HTTPError: If the dataset is not found in the catalog.
+        """
+        catalog = self._use_catalog(catalog)
+
+        url_dataset = f"{self.root_url}catalogs/{catalog}/datasets/{dataset_id}"
+        resp_dataset = self.session.get(url_dataset)
+        resp_dataset.raise_for_status()
+
+        url = f"{self.root_url}catalogs/{catalog}/datasets/{dataset_id}/lineage"
+        resp = self.session.get(url)
+        data = resp.json()
+        relations_data = data["relations"]
+
+        restricted_datasets = [
+            dataset_metadata["identifier"]
+            for dataset_metadata in data["datasets"]
+            if dataset_metadata.get("status", None) == "Restricted"
+        ]
+
+        data_dict = {}
+
+        for entry in relations_data:
+            source_dataset_id = entry["source"]["dataset"]
+            source_catalog = entry["source"]["catalog"]
+            destination_dataset_id = entry["destination"]["dataset"]
+            destination_catalog = entry["destination"]["catalog"]
+
+            if destination_dataset_id == dataset_id:
+                for dataset in data["datasets"]:
+                    if dataset["identifier"] == source_dataset_id and dataset.get("status", None) != "Restricted":
+                        source_dataset_title = dataset["title"]
+                    elif dataset["identifier"] == source_dataset_id and dataset.get("status", None) == "Restricted":
+                        source_dataset_title = "Access Restricted"
+                data_dict[source_dataset_id] = (
+                    "source",
+                    source_catalog,
+                    source_dataset_title,
+                )
+
+            if source_dataset_id == dataset_id:
+                for dataset in data["datasets"]:
+                    if dataset["identifier"] == destination_dataset_id and dataset.get("status", None) != "Restricted":
+                        destination_dataset_title = dataset["title"]
+                    elif (
+                        dataset["identifier"] == destination_dataset_id and dataset.get("status", None) == "Restricted"
+                    ):
+                        destination_dataset_title = "Access Restricted"
+                data_dict[destination_dataset_id] = (
+                    "produced",
+                    destination_catalog,
+                    destination_dataset_title,
+                )
+
+        output_data = {
+            "type": [v[0] for v in data_dict.values()],
+            "dataset_identifier": list(data_dict.keys()),
+            "title": [v[2] for v in data_dict.values()],
+            "catalog": [v[1] for v in data_dict.values()],
+        }
+
+        lineage_df = pd.DataFrame(output_data)
+        lineage_df.loc[
+            lineage_df["dataset_identifier"].isin(restricted_datasets),
+            ["dataset_identifier", "catalog", "title"],
+        ] = "Access Restricted"
+
+        if max_results > -1:
+            lineage_df = lineage_df[0:max_results]
+
+        if output:
+            print(lineage_df)
+
+        return lineage_df
+
+
+    def create_dataset_lineage(
+            self: 'Fusion',
+            base_dataset: str,
+            source_dataset_catalog_mapping: Union[pd.DataFrame, List[Dict[str, str]]],
+            catalog: Optional[str] = None,
+            return_resp_obj: bool = False,
+        ) -> Optional[requests.Response]:
+        """Upload lineage to a dataset.
+
+        Args:
+            base_dataset (str): A dataset identifier to which you want to add lineage.
+            source_dataset_catalog_mapping (Union[pd.DataFrame, list[dict[str]]]): Mapping for the dataset
+                identifier(s) and catalog(s) from which to add lineage.
+            catalog (Optional[str], optional): Catalog identifier. Defaults to None.
+            return_resp_obj (bool, optional): If True, then return the response object. Defaults to False.
+
+        Raises:
+            ValueError: If source_dataset_catalog_mapping is not a pandas DataFrame or a list of dictionaries.
+            HTTPError: If the request is unsuccessful.
+
+        Examples:
+            Creating lineage from a pandas DataFrame.
+            >>> data = [{"dataset": "a", "catalog": "a"}, {"dataset": "b", "catalog": "b"}]
+            >>> df = pd.DataFrame(data)
+            >>> fusion = Fusion()
+            >>> fusion.create_dataset_lineage(base_dataset="c", source_dataset_catalog_mapping=df, catalog="c")
+
+            Creating lineage from a list of dictionaries.
+            >>> data = [{"dataset": "a", "catalog": "a"}, {"dataset": "b", "catalog": "b"}]
+            >>> fusion = Fusion()
+            >>> fusion.create_dataset_lineage(base_dataset="c", source_dataset_catalog_mapping=data, catalog="c")
+
+        """
+        catalog = self._use_catalog(catalog)
+
+        if isinstance(source_dataset_catalog_mapping, pd.DataFrame):
+            dataset_mapping_list = [
+                {"dataset": row["dataset"], "catalog": row["catalog"]}
+                for _, row in source_dataset_catalog_mapping.iterrows()
+            ]
+        elif isinstance(source_dataset_catalog_mapping, list):
+            dataset_mapping_list = source_dataset_catalog_mapping
+        else:
+            raise ValueError("source_dataset_catalog_mapping must be a pandas DataFrame or a list of dictionaries.")
+
+        data = {"source": dataset_mapping_list}
+
+        url = f"{self.root_url}catalogs/{catalog}/datasets/{base_dataset}/lineage"
+
+        resp = self.session.post(url, json=data)
+        resp.raise_for_status()
+
+        return resp if return_resp_obj else None
+
+    def list_product_dataset_mapping(
+            self: 'Fusion',
+            dataset: Union[str, List[str], None] = None,
+            product: Union[str, List[str], None] = None,
+            catalog: Union[str, None] = None,
+        ) -> pd.DataFrame:
+            """Get the product to dataset linking contained in a catalog. A product is a grouping of datasets.
+
+            Args:
+                dataset (Union[str, List[str], None], optional): A string or list of strings that are dataset
+                identifiers to filter the output. If a list is provided then it will return
+                datasets whose identifier matches any of the strings. Defaults to None.
+                product (Union[str, List[str], None], optional): A string or list of strings that are product
+                identifiers to filter the output. If a list is provided then it will return
+                products whose identifier matches any of the strings. Defaults to None.
+                catalog (Union[str, None], optional): A catalog identifier. Defaults to 'common'.
+
+            Returns:
+                pd.DataFrame: A dataframe with a row for each dataset to product mapping.
+            """
+            catalog = self._use_catalog(catalog)
+            url = f"{self.root_url}catalogs/{catalog}/productDatasets"
+            mapping_df = pd.DataFrame(self._call_for_dataframe(url, self.session))
+
+            if dataset:
+                if isinstance(dataset, list):
+                    contains = "|".join(f"{s}" for s in dataset)
+                    mapping_df = mapping_df[mapping_df["dataset"].str.contains(contains, case=False)]
+                if isinstance(dataset, str):
+                    mapping_df = mapping_df[mapping_df["dataset"].str.contains(dataset, case=False)]
+            if product:
+                if isinstance(product, list):
+                    contains = "|".join(f"{s}" for s in product)
+                    mapping_df = mapping_df[mapping_df["product"].str.contains(contains, case=False)]
+                if isinstance(product, str):
+                    mapping_df = mapping_df[mapping_df["product"].str.contains(product, case=False)]
+            return mapping_df
+
+    def product(
+            self: 'Fusion',
+            identifier: str,
+            title: str = "",
+            category: Union[str, List[str], None] = None,
+            short_abstract: str = "",
+            description: str = "",
+            is_active: bool = True,
+            is_restricted: Union[bool, None] = None,
+            maintainer: Union[str, List[str], None] = None,
+            region: Union[str, List[str]] = "Global",
+            publisher: str = "J.P. Morgan",
+            sub_category: Union[str, List[str], None] = None,
+            tag: Union[str, List[str], None] = None,
+            delivery_channel: Union[str, List[str]] = "API",
+            theme: Union[str, None] = None,
+            release_date: Union[str, None] = None,
+            language: str = "English",
+            status: str = "Available",
+            image: str = "",
+            logo: str = "",
+            dataset: Union[str, List[str], None] = None,
+            **kwargs: Any,
+        ) -> 'Product':
+            """Instantiate a Product object with this client for metadata creation."""
+            product_obj = Product(
+                identifier=identifier,
+                title=title,
+                category=category,
+                short_abstract=short_abstract,
+                description=description,
+                is_active=is_active,
+                is_restricted=is_restricted,
+                maintainer=maintainer,
+                region=region,
+                publisher=publisher,
+                sub_category=sub_category,
+                tag=tag,
+                delivery_channel=delivery_channel,
+                theme=theme,
+                release_date=release_date,
+                language=language,
+                status=status,
+                image=image,
+                logo=logo,
+                dataset=dataset,
+                **kwargs,
+            )
+            product_obj.client = self
+            return product_obj
+
+    def dataset(
+            self: 'Fusion',
+            identifier: str,
+            title: str = "",
+            category: Union[str, List[str], None] = None,
+            description: str = "",
+            frequency: str = "Once",
+            is_internal_only_dataset: bool = False,
+            is_third_party_data: bool = True,
+            is_restricted: Union[bool, None] = None,
+            is_raw_data: bool = True,
+            maintainer: Union[str, None] = "J.P. Morgan Fusion",
+            source: Union[str, List[str], None] = None,
+            region: Union[str, List[str], None] = None,
+            publisher: str = "J.P. Morgan",
+            product: Union[str, List[str], None] = None,
+            sub_category: Union[str, List[str], None] = None,
+            tags: Union[str, List[str], None] = None,
+            created_date: Union[str, None] = None,
+            modified_date: Union[str, None] = None,
+            delivery_channel: Union[str, List[str]] = "API",
+            language: str = "English",
+            status: str = "Available",
+            type_: Union[str, None] = "Source",
+            container_type: Union[str, None] = "Snapshot-Full",
+            snowflake: Union[str, None] = None,
+            complexity: Union[str, None] = None,
+            is_immutable: Union[bool, None] = None,
+            is_mnpi: Union[bool, None] = None,
+            is_pci: Union[bool, None] = None,
+            is_pii: Union[bool, None] = None,
+            is_client: Union[bool, None] = None,
+            is_public: Union[bool, None] = None,
+            is_internal: Union[bool, None] = None,
+            is_confidential: Union[bool, None] = None,
+            is_highly_confidential: Union[bool, None] = None,
+            is_active: Union[bool, None] = None,
+            owners: Union[List[str], None] = None,
+            application_id: Union[str, Dict[str, str], None] = None,
+            **kwargs: Any,
+        ) -> 'Dataset':
+            """Instantiate a Dataset object with this client for metadata creation."""
+            dataset_obj = Dataset(
+                identifier=identifier,
+                title=title,
+                category=category,
+                description=description,
+                frequency=frequency,
+                is_internal_only_dataset=is_internal_only_dataset,
+                is_third_party_data=is_third_party_data,
+                is_restricted=is_restricted,
+                is_raw_data=is_raw_data,
+                maintainer=maintainer,
+                source=source,
+                region=region,
+                publisher=publisher,
+                product=product,
+                sub_category=sub_category,
+                tags=tags,
+                created_date=created_date,
+                modified_date=modified_date,
+                delivery_channel=delivery_channel,
+                language=language,
+                status=status,
+                type_=type_,
+                container_type=container_type,
+                snowflake=snowflake,
+                complexity=complexity,
+                is_immutable=is_immutable,
+                is_mnpi=is_mnpi,
+                is_pci=is_pci,
+                is_pii=is_pii,
+                is_client=is_client,
+                is_public=is_public,
+                is_internal=is_internal,
+                is_confidential=is_confidential,
+                is_highly_confidential=is_highly_confidential,
+                is_active=is_active,
+                owners=owners,
+                application_id=application_id,
+                **kwargs,
+            )
+            dataset_obj.client = self
+            return dataset_obj
+

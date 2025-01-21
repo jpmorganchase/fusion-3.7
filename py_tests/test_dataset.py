@@ -265,7 +265,7 @@ def test_dataset_class_from_dict() -> None:
     assert test_dataset.is_highly_confidential is None
     assert test_dataset.is_active is None
 
-def test_dataset_class_from_csv() -> None:  # noqa: ARG001
+def test_dataset_class_from_csv(mock_dataset_pd_read_csv: Generator[pd.DataFrame, Any, None]) -> None:  # noqa: ARG001
     """Test Dataset class."""
     test_dataset = Dataset._from_csv("datasets.csv")
 

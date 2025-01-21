@@ -1,11 +1,12 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
+import json as js
 import logging
 import re
 import sys
 import warnings
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import fsspec
 import pandas as pd
@@ -24,8 +25,12 @@ from .utils import (
     distribution_to_url,
     get_default_fs,
     get_session,
+    is_dataset_raw,
     normalise_dt_param_str,
+    path_to_url,
     tqdm_joblib,
+    upload_files,
+    validate_file_names,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,7 +116,7 @@ class Fusion:
         if isinstance(credentials, FusionCredentials):
             self.credentials = credentials
         elif isinstance(credentials, str):
-            self.credentials = FusionCredentials.from_file(Path(credentials))
+            self.credentials = FusionCredentials.from_file(Path(credentials))  # type: ignore
         else:
             raise ValueError("credentials must be a path to a credentials file or a dictionary")
 
@@ -693,7 +698,6 @@ class Fusion:
                     delayed(self.get_fusion_filesystem().download)(**spec) for spec in download_spec
                 )
         else:
-            # res = [self.get_fusion_filesystem().download(**download_spec[0])]
             res = Parallel(n_jobs=n_par)(
                 delayed(self.get_fusion_filesystem().download)(**spec) for spec in download_spec
             )
@@ -702,4 +706,220 @@ class Fusion:
             for r in res:
                 if not r[0]:
                     warnings.warn(f"The download of {r[1]} was not successful", stacklevel=2)
+        return res if return_paths else None
+
+    def to_bytes(
+            self,
+            dataset: str,
+            series_member: str,
+            dataset_format: str = "parquet",
+            catalog: str | None = None,
+    ) -> BytesIO:
+        """Returns an instance of dataset (the distribution) as a bytes object.
+
+        Args:
+            dataset (str): A dataset identifier
+            series_member (str,): A dataset series member identifier
+            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+        """
+
+        catalog = self._use_catalog(catalog)
+
+        url = distribution_to_url(
+            self.root_url,
+            dataset,
+            series_member,
+            dataset_format,
+            catalog,
+        )
+
+        return Fusion._call_for_bytes_object(url, self.session)
+
+    def upload(  # noqa: PLR0913
+            self,
+            path: str,
+            dataset: Optional[str] = None,
+            dt_str: str = "latest",
+            catalog:Optional[str] = None,
+            n_par: Optional[int] = None,
+            show_progress: bool = True,
+            return_paths: bool = False,
+            multipart: bool = True,
+            chunk_size: int = 5 * 2 ** 20,
+            from_date: Optional[str] = None,
+            to_date: Optional[str] = None,
+            preserve_original_name: Optional[bool] = False,
+            additional_headers: Optional[Dict[str, str]] = None,
+    ) -> Optional[List[Tuple[Optional[bool, str, str | None]]]]:
+        """Uploads the requested files/files to Fusion.
+
+        Args:
+            path (str): path to a file or a folder with files
+            dataset (str, optional): Dataset identifier to which the file will be uploaded (for single file only).
+                                    If not provided the dataset will be implied from file's name.
+            dt_str (str, optional): A file name. Can be any string but is usually a date.
+                                    Defaults to 'latest' which will return the most recent.
+                                    Relevant for a single file upload only. If not provided the dataset will
+                                    be implied from file's name.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            n_par (int, optional): Specify how many distributions to download in parallel.
+                Defaults to all cpus available.
+            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            return_paths (bool, optional): Return paths and success statuses of the downloaded files.
+            multipart (bool, optional): Is multipart upload.
+            chunk_size (int, optional): Maximum chunk size.
+            from_date (str, optional): start of the data date range contained in the distribution,
+                defaults to upoad date
+            to_date (str, optional): end of the data date range contained in the distribution,
+                defaults to upload date.
+            preserve_original_name (bool, optional): Preserve the original name of the file. Defaults to False.
+
+        Returns:
+
+
+        """
+        catalog = self._use_catalog(catalog)
+
+        if not self.fs.exists(path):
+            raise RuntimeError("The provided path does not exist")
+
+        fs_fusion = self.get_fusion_filesystem()
+        if self.fs.info(path)["type"] == "directory":
+            file_path_lst = self.fs.find(path)
+            local_file_validation = validate_file_names(file_path_lst, fs_fusion)
+            file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
+            file_name = [f.split("/")[-1] for f in file_path_lst]
+            is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
+            local_url_eqiv = [path_to_url(i, r) for i, r in zip(file_path_lst, is_raw_lst)]
+        else:
+            file_path_lst = [path]
+            if not catalog or not dataset:
+                local_file_validation = validate_file_names(file_path_lst, fs_fusion)
+                file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
+                is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
+                local_url_eqiv = [path_to_url(i, r) for i, r in zip(file_path_lst, is_raw_lst)]
+                if preserve_original_name:
+                    raise ValueError("preserve_original_name can only be used when catalog and dataset are provided.")
+            else:
+                date_identifier = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+                if date_identifier.match(dt_str):
+                    dt_str = dt_str if dt_str != "latest" else pd.Timestamp("today").date().strftime("%Y%m%d")
+                    dt_str = pd.Timestamp(dt_str).date().strftime("%Y%m%d")
+
+                if catalog not in fs_fusion.ls("") or dataset not in [
+                    i.split("/")[-1] for i in fs_fusion.ls(f"{catalog}/datasets")
+                ]:
+                    msg = (
+                        f"File file has not been uploaded, one of the catalog: {catalog} "
+                        f"or dataset: {dataset} does not exit."
+                    )
+                    warnings.warn(msg, stacklevel=2)
+                    return [(False, path, msg)]
+                file_format = path.split(".")[-1]
+                file_name = [path.split("/")[-1]]
+                file_format = "raw" if file_format not in RECOGNIZED_FORMATS else file_format
+
+                local_url_eqiv = [
+                    "/".join(distribution_to_url("", dataset, dt_str, file_format, catalog, False).split("/")[1:])
+                ]
+
+        if not preserve_original_name:
+            data_map_df = pd.DataFrame([file_path_lst, local_url_eqiv]).T
+            data_map_df.columns = pd.Index(["path", "url"])
+        else:
+            data_map_df = pd.DataFrame([file_path_lst, local_url_eqiv, file_name]).T
+            data_map_df.columns = pd.Index(["path", "url", "file_name"])
+
+        n_par = cpu_count(n_par)
+        parallel = len(data_map_df) > 1
+        res = upload_files(
+            fs_fusion,
+            self.fs,
+            data_map_df,
+            parallel=parallel,
+            n_par=n_par,
+            multipart=multipart,
+            chunk_size=chunk_size,
+            show_progress=show_progress,
+            from_date=from_date,
+            to_date=to_date,
+            additional_headers=additional_headers,
+        )
+
+        if not all(r[0] for r in res):
+            failed_res = [r for r in res if not r[0]]
+            msg = f"Not all uploads were successfully completed. The following failed:\n{failed_res}"
+            logger.warning(msg)
+            warnings.warn(msg, stacklevel=2)
+
+        return res if return_paths else None
+
+    def from_bytes(  # noqa: PLR0913
+            self,
+            data: BytesIO,
+            dataset: str,
+            series_member: str = "latest",
+            catalog: Optional[str] = None,
+            distribution: str = "parquet",
+            show_progress: bool = True,
+            return_paths: bool = False,
+            chunk_size: int = 5 * 2 ** 20,
+            from_date: Optional[str] = None,
+            to_date: Optional[str] = None,
+            file_name: Optional[str] = None,
+            **kwargs: Any,  # noqa: ARG002
+    ) -> Optional[List[Tuple[Optional[bool, str, str]]]]:
+        """Uploads data from an object in memory.
+
+        Args:
+            data (str): an object in memory to upload
+            dataset (str): Dataset name to which the bytes will be uploaded.
+            series_member (str, optional): A single date or label. Defaults to 'latest' which will return
+                the most recent.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            distribution (str, optional): A distribution type, e.g. a file format or raw
+            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            return_paths (bool, optional): Return paths and success statuses of the downloaded files.
+            chunk_size (int, optional): Maximum chunk size.
+            from_date (str, optional): start of the data date range contained in the distribution,
+                defaults to upload date
+            to_date (str, optional): end of the data date range contained in the distribution, defaults to upload date.
+            file_name (str, optional): file name to be used for the uploaded file. Defaults to Fusion standard naming.
+
+        Returns:
+            Optional[list[tuple[bool, str, Optional[str]]]: a list of tuples, one for each distribution
+
+        """
+        catalog = self._use_catalog(catalog)
+
+        fs_fusion = self.get_fusion_filesystem()
+        if distribution not in RECOGNIZED_FORMATS + ["raw"]:
+            raise ValueError(f"Dataset format {distribution} is not supported")
+
+        is_raw = js.loads(fs_fusion.cat(f"{catalog}/datasets/{dataset}"))["isRawData"]
+        local_url_eqiv = path_to_url(f"{dataset}__{catalog}__{series_member}.{distribution}", is_raw)
+
+        data_map_df = pd.DataFrame(["", local_url_eqiv, file_name]).T
+        data_map_df.columns = ["path", "url", "file_name"]  # type: ignore
+
+        res = upload_files(
+            fs_fusion,
+            data,
+            data_map_df,
+            parallel=False,
+            n_par=1,
+            multipart=False,
+            chunk_size=chunk_size,
+            show_progress=show_progress,
+            from_date=from_date,
+            to_date=to_date,
+        )
+
+        if not all(r[0] for r in res):
+            failed_res = [r for r in res if not r[0]]
+            msg = f"Not all uploads were successfully completed. The following failed:\n{failed_res}"
+            logger.warning(msg)
+            warnings.warn(msg, stacklevel=2)
+
         return res if return_paths else None

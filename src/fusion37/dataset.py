@@ -466,7 +466,7 @@ class Dataset(metaclass=CamelCaseMeta):
 
         data = self.to_dict()
 
-        if data.get("report", {}).get("tier", "") == "":
+        if data.get("report", None) and data["report"]["tier"] == "":
             raise ValueError("Tier cannot be blank for reports.")
 
         url = f"{client.root_url}catalogs/{catalog}/datasets/{self.identifier}"

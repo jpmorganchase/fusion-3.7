@@ -427,7 +427,7 @@ class Dataset(metaclass=CamelCaseMeta):
 
             From a dictionary:
 
-            >>> from fusion import Fusion
+            >>> from fusion37 import Fusion
             >>> fusion = Fusion()
             >>> dataset_dict = {
             ...     "identifier": "my_dataset",
@@ -442,7 +442,7 @@ class Dataset(metaclass=CamelCaseMeta):
 
             From existing dataset in a catalog:
 
-            >>> from fusion import Fusion
+            >>> from fusion37 import Fusion
             >>> fusion = Fusion()
             >>> dataset = fusion.dataset("my_dataset").from_catalog(catalog="my_catalog")
             >>> dataset.identifier = "my_new_dataset"

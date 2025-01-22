@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union, cast
 
 import numpy as np
 import pandas as pd
+import requests
 
 from fusion37.fusion_types import Types
-import requests
 from fusion37.utils import (
     CamelCaseMeta,
     camel_to_snake,

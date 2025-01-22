@@ -164,23 +164,6 @@ def fusion_obj(credentials: FusionCredentials) -> Fusion:
 
 
 @pytest.fixture
-def data_table() -> pl.DataFrame:
-    return pl.DataFrame(
-        {"col_1": range(10), "col_2": [str(x) for x in range(10)], "col_3": [x / 3.14159 for x in range(10)]}
-    )
-
-
-@pytest.fixture
-def data_table_as_csv(data_table: pl.DataFrame) -> str:
-    return data_table.write_csv(None)
-
-
-@pytest.fixture
-def data_table_as_json(data_table: pl.DataFrame) -> str:
-    return data_table.write_json(None)
-
-
-@pytest.fixture
 def mock_product_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
     """Mock the pd.read_csv function."""
     product_df = pd.DataFrame(

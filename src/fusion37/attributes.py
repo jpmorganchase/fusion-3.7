@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from fusion37.fusion_types import Types
+import requests
 from fusion37.utils import (
     CamelCaseMeta,
     camel_to_snake,
@@ -20,7 +21,8 @@ from fusion37.utils import (
 if TYPE_CHECKING:
     import requests
 
-    from fusion37 import Fusion
+    from fusion37.fusion import Fusion
+
 
 @dataclass
 class Attribute(metaclass=CamelCaseMeta):
@@ -47,7 +49,7 @@ class Attribute(metaclass=CamelCaseMeta):
     publisher: Optional[str] = None
     is_key_data_element: Optional[bool] = None
 
-    _client: Optional[Fusion] = field(init=False, repr=False, compare=False, default=None)
+    _client: Optional["Fusion"] = field(init=False, repr=False, compare=False, default=None)
 
     def __str__(self) -> str:
         attrs = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
@@ -88,14 +90,14 @@ class Attribute(metaclass=CamelCaseMeta):
             self.__dict__[snake_name] = value
 
     @property
-    def client(self) -> Optional[Fusion]:
+    def client(self) -> Optional["Fusion"]:
         return self._client
 
     @client.setter
-    def client(self, client: Optional[Fusion]) -> None:
+    def client(self, client: Optional["Fusion"]) -> None:
         self._client = client
 
-    def _use_client(self, client: Optional[Fusion]) -> Fusion:
+    def _use_client(self, client: Optional["Fusion"]) -> "Fusion":
         res = self._client if client is None else client
         if res is None:
             raise ValueError("A Fusion client object is required.")
@@ -263,7 +265,7 @@ class Attribute(metaclass=CamelCaseMeta):
             self,
             dataset: str,
             catalog: Optional[str] = None,
-            client: Optional[Fusion] = None,
+            client: Optional["Fusion"] = None,
             return_resp_obj: bool = False,
         ) -> Optional[requests.Response]:
             """Upload a new attribute to a Fusion catalog.
@@ -332,7 +334,7 @@ class Attribute(metaclass=CamelCaseMeta):
             self,
             dataset: str,
             catalog: Optional[str] = None,
-            client: Optional[Fusion] = None,
+            client: Optional["Fusion"] = None,
             return_resp_obj: bool = False,
         ) -> Optional[requests.Response]:
         """Delete an Attribute from a Fusion catalog.
@@ -365,7 +367,7 @@ class Attribute(metaclass=CamelCaseMeta):
             self,
             attributes: List['Attribute'],
             catalog: Optional[str] = None,
-            client: Optional[Fusion] = None,
+            client: Optional["Fusion"] = None,
             return_resp_obj: bool = False,
         ) -> Optional[requests.Response]:
         """Map an attribute to existing registered attributes in a Fusion catalog. Attributes from an output data flow
@@ -438,7 +440,7 @@ class Attributes:
 
     attributes: List[Attribute] = field(default_factory=list)
 
-    _client: Optional[Fusion] = None
+    _client: Optional["Fusion"] = None
 
     def __str__(self) -> str:
         """String representation of the Attributes collection."""
@@ -451,12 +453,12 @@ class Attributes:
         return self.__str__()
 
     @property
-    def client(self) -> Optional[Fusion]:
+    def client(self) -> Optional["Fusion"]:
         """Return the client."""
         return self._client
 
     @client.setter
-    def client(self, client: Optional[Fusion]) -> None:
+    def client(self, client: Optional["Fusion"]) -> None:
         """Set the client for the Dataset. Set automatically if the Dataset is instantiated from a Fusion object.
 
         Args:
@@ -471,7 +473,7 @@ class Attributes:
         """
         self._client = client
 
-    def _use_client(self, client: Optional[Fusion]) -> Fusion:
+    def _use_client(self, client: Optional["Fusion"]) -> "Fusion":
         """Determine client."""
         res = self._client if client is None else client
         if res is None:
@@ -706,7 +708,7 @@ class Attributes:
         self: 'Attributes', 
         dataset: str, 
         catalog: Union[str, None] = None, 
-        client: Union[Fusion, None] = None
+        client: Union["Fusion", None] = None
     ) -> 'Attributes':
         """Instantiate an Attributes object from a dataset's attributes in a Fusion catalog.
 
@@ -740,7 +742,7 @@ class Attributes:
         self: 'Attributes',
         dataset: Union[str, None] = None,
         catalog: Union[str, None] = None,
-        client: Union[Fusion, None] = None,
+        client: Union["Fusion", None] = None,
         return_resp_obj: bool = False,
     ) -> Union[requests.Response, None]:
         """Upload the Attributes to a dataset in a Fusion catalog. If no dataset is provided,
@@ -840,7 +842,7 @@ class Attributes:
         self: 'Attributes',
         dataset: str,
         catalog: Union[str, None] = None,
-        client: Union[Fusion, None] = None,
+        client: Union["Fusion", None] = None,
         return_resp_obj: bool = False,
     ) -> Union[List[requests.Response], None]:
         """Delete the Attributes from a Fusion catalog.

@@ -14,7 +14,6 @@ import pandas as pd
 from joblib import Parallel, delayed
 from tabulate import tabulate
 from tqdm import tqdm
-from tqdm.contrib.concurrent import tqdm_joblib
 
 from fusion37.attributes import Attribute, Attributes
 from fusion37.credentials import FusionCredentials
@@ -38,6 +37,7 @@ from .utils import (
     normalise_dt_param_str,
     path_to_url,
     requests_raise_for_status,
+    tqdm_joblib,
     # stream_single_file_new_session,
     upload_files,
     validate_file_names,

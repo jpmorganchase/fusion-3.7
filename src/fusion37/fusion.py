@@ -1,4 +1,6 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
+from __future__ import annotations
+
 import json as js
 import logging
 import re
@@ -6,34 +8,45 @@ import sys
 import warnings
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Tuple
 
-import fsspec
 import pandas as pd
-import requests
 from joblib import Parallel, delayed
 from tabulate import tabulate
 from tqdm import tqdm
+from tqdm.contrib.concurrent import tqdm_joblib
 
-from .credentials import FusionCredentials
-from .dataset import Dataset
+from fusion37.attributes import Attribute, Attributes
+from fusion37.credentials import FusionCredentials
+from fusion37.dataflow import InputDataFlow, OutputDataFlow
+from fusion37.dataset import Dataset
+from fusion37.fusion_types import Types
+from fusion37.product import Product
+from fusion37.report import Report
+
 from .exceptions import APIResponseError
 from .fusion_filesystem import FusionHTTPFileSystem
-from .product import Product
 from .utils import (
     RECOGNIZED_FORMATS,
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
+    # download_single_file_threading,
     get_default_fs,
     get_session,
     is_dataset_raw,
     normalise_dt_param_str,
     path_to_url,
-    tqdm_joblib,
+    requests_raise_for_status,
+    # stream_single_file_new_session,
     upload_files,
     validate_file_names,
 )
+
+if TYPE_CHECKING:
+    import fsspec
+    import requests
+
 
 logger = logging.getLogger(__name__)
 VERBOSE_LVL = 25
@@ -1145,7 +1158,7 @@ class Fusion:
 
 
     def create_dataset_lineage(
-            self: 'Fusion',
+            self: Fusion,
             base_dataset: str,
             source_dataset_catalog_mapping: Union[pd.DataFrame, List[Dict[str, str]]],
             catalog: Optional[str] = None,
@@ -1199,7 +1212,7 @@ class Fusion:
         return resp if return_resp_obj else None
 
     def list_product_dataset_mapping(
-            self: 'Fusion',
+            self: Fusion,
             dataset: Union[str, List[str], None] = None,
             product: Union[str, List[str], None] = None,
             catalog: Union[str, None] = None,
@@ -1237,7 +1250,7 @@ class Fusion:
             return mapping_df
 
     def product(
-            self: 'Fusion',
+            self: Fusion,
             identifier: str,
             title: str = "",
             category: Union[str, List[str], None] = None,
@@ -1259,7 +1272,7 @@ class Fusion:
             logo: str = "",
             dataset: Union[str, List[str], None] = None,
             **kwargs: Any,
-        ) -> 'Product':
+        ) -> Product:
             """Instantiate a Product object with this client for metadata creation."""
             product_obj = Product(
                 identifier=identifier,
@@ -1288,7 +1301,7 @@ class Fusion:
             return product_obj
 
     def dataset(
-            self: 'Fusion',
+            self: Fusion,
             identifier: str,
             title: str = "",
             category: Union[str, List[str], None] = None,
@@ -1327,7 +1340,7 @@ class Fusion:
             owners: Union[List[str], None] = None,
             application_id: Union[str, Dict[str, str], None] = None,
             **kwargs: Any,
-        ) -> 'Dataset':
+        ) -> Dataset:
             """Instantiate a Dataset object with this client for metadata creation."""
             dataset_obj = Dataset(
                 identifier=identifier,
@@ -1371,4 +1384,452 @@ class Fusion:
             )
             dataset_obj.client = self
             return dataset_obj
+    
+
+    def attribute(  # noqa: PLR0913
+            self,
+            identifier: str,
+            index: int,
+            data_type: Union[str, Types] = "String",
+            title: str = "",
+            description: str = "",
+            is_dataset_key: bool = False,
+            source: Optional[str] = None,
+            source_field_id: Optional[str] = None,
+            is_internal_dataset_key: Optional[bool] = None,
+            is_externally_visible: Optional[bool] = True,
+            unit: Optional[Any] = None,
+            multiplier: float = 1.0,
+            is_propagation_eligible: Optional[bool] = None,
+            is_metric: Optional[bool] = None,
+            available_from: Optional[str] = None,
+            deprecated_from: Optional[str] = None,
+            term: str = "bizterm1",
+            dataset: Optional[int] = None,
+            attribute_type: Optional[str] = None,
+            application_id: Optional[Union[str, dict]] = None,
+            **kwargs: Any,
+        ) -> Attribute:
+        data_type = Types[str(data_type).strip().rsplit(".", maxsplit=1)[-1].title()]
+        attribute_obj = Attribute(
+            identifier=identifier,
+            index=index,
+            data_type=data_type,
+            title=title,
+            description=description,
+            is_dataset_key=is_dataset_key,
+            source=source,
+            source_field_id=source_field_id,
+            is_internal_dataset_key=is_internal_dataset_key,
+            is_externally_visible=is_externally_visible,
+            unit=unit,
+            multiplier=multiplier,
+            is_propagation_eligible=is_propagation_eligible,
+            is_metric=is_metric,
+            available_from=available_from,
+            deprecated_from=deprecated_from,
+            term=term,
+            dataset=dataset,
+            attribute_type=attribute_type,
+            application_id=application_id,
+            **kwargs,
+        )
+        attribute_obj.client = self
+        return attribute_obj
+
+    def attributes(
+            self,
+            attributes: Optional[List[Attribute]] = None,
+        ) -> Attributes:
+        attributes_obj = Attributes(attributes=attributes or [])
+        attributes_obj.client = self
+        return attributes_obj
+
+    def delete_datasetmembers(
+            self,
+            dataset: str,
+            series_members: Union[str, List[str]],
+            catalog: Optional[str] = None,
+            return_resp_obj: bool = False,
+        ) -> Optional[List[requests.Response]]:
+        catalog = self._use_catalog(catalog)
+        if isinstance(series_members, str):
+            series_members = [series_members]
+        responses = []
+        for series_member in series_members:
+            url = f"{self.root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries/{series_member}"
+            resp = self.session.delete(url)
+            requests_raise_for_status(resp)
+            responses.append(resp)
+        return responses if return_resp_obj else None
+
+    def delete_all_datasetmembers(
+            self,
+            dataset: str,
+            catalog: Optional[str] = None,
+            return_resp_obj: bool = False,
+        ) -> Optional[requests.Response]:
+        catalog = self._use_catalog(catalog)
+        url = f"{self.root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries"
+        resp = self.session.delete(url)
+        requests_raise_for_status(resp)
+        return resp if return_resp_obj else None
+
+    def list_registered_attributes(
+            self,
+            catalog: Optional[str] = None,
+            output: bool = False,
+            display_all_columns: bool = False,
+        ) -> pd.DataFrame:
+        catalog = self._use_catalog(catalog)
+        url = f"{self.root_url}catalogs/{catalog}/attributes"
+        ds_attr_df = Fusion._call_for_dataframe(url, self.session).reset_index(drop=True)
+        if not display_all_columns:
+            ds_attr_df = ds_attr_df[
+                ds_attr_df.columns.intersection(
+                    [
+                        "identifier",
+                        "title",
+                        "dataType",
+                        "description",
+                        "publisher",
+                        "applicationId",
+                    ]
+                )
+            ]
+        if output:
+            pass
+        return ds_attr_df
+
+    def report(  # noqa: PLR0913
+            self,
+            identifier: str,
+            title: str = "",
+            category: Union[str, List[str], None] = None,
+            description: str = "",
+            frequency: str = "Once",
+            is_internal_only_dataset: bool = False,
+            is_third_party_data: bool = True,
+            is_restricted: Optional[bool] = None,
+            is_raw_data: bool = True,
+            maintainer: Optional[str] = "J.P. Morgan Fusion",
+            source: Union[str, List[str], None] = None,
+            region: Union[str, List[str], None] = None,
+            publisher: str = "J.P. Morgan",
+            product: Union[str, List[str], None] = None,
+            sub_category: Union[str, List[str], None] = None,
+            tags: Union[str, List[str], None] = None,
+            created_date: Optional[str] = None,
+            modified_date: Optional[str] = None,
+            delivery_channel: Union[str, List[str]] = "API",
+            language: str = "English",
+            status: str = "Available",
+            type_: Optional[str] = "Report",
+            container_type: Optional[str] = "Snapshot-Full",
+            snowflake: Optional[str] = None,
+            complexity: Optional[str] = None,
+            is_immutable: Optional[bool] = None,
+            is_mnpi: Optional[bool] = None,
+            is_pci: Optional[bool] = None,
+            is_pii: Optional[bool] = None,
+            is_client: Optional[bool] = None,
+            is_public: Optional[bool] = None,
+            is_internal: Optional[bool] = None,
+            is_confidential: Optional[bool] = None,
+            is_highly_confidential: Optional[bool] = None,
+            is_active: Optional[bool] = None,
+            owners: Optional[List[str]] = None,
+            application_id: Union[str, Dict[str, str], None] = None,
+            report: Optional[Dict[str, str]] = None,
+            **kwargs: Any,
+        ) -> Report:
+            """Instantiate Report object with this client for metadata creation 
+            for managing regulatory reporting metadata.
+
+            Args:
+                identifier (str): Dataset identifier.
+                title (str, optional): Dataset title. If not provided, defaults to identifier.
+                category (Union[str, List[str], None], optional): A category or list of categories for the dataset.
+                    Defaults to None.
+                description (str, optional): Dataset description. If not provided, defaults to identifier.
+                frequency (str, optional): The frequency of the dataset. Defaults to "Once".
+                is_internal_only_dataset (bool, optional): Flag for internal datasets. Defaults to False.
+                is_third_party_data (bool, optional): Flag for third party data. Defaults to True.
+                is_restricted (Optional[bool], optional): Flag for restricted datasets. Defaults to None.
+                is_raw_data (bool, optional): Flag for raw datasets. Defaults to True.
+                maintainer (Optional[str], optional): Dataset maintainer. Defaults to "J.P. Morgan Fusion".
+                source (Union[str, List[str], None], optional): Name of data vendor which provided the data.
+                    Defaults to None.
+                region (Union[str, List[str], None], optional): Region. Defaults to None.
+                publisher (str, optional): Name of vendor that publishes the data. Defaults to "J.P. Morgan".
+                product (Union[str, List[str], None], optional): Product to associate dataset with. Defaults to None.
+                sub_category (Union[str, List[str], None], optional): Sub-category. Defaults to None.
+                tags (Union[str, List[str], None], optional): Tags used for search purposes. Defaults to None.
+                created_date (Optional[str], optional): Created date. Defaults to None.
+                modified_date (Optional[str], optional): Modified date. Defaults to None.
+                delivery_channel (Union[str, List[str]], optional): Delivery channel. Defaults to "API".
+                language (str, optional): Language. Defaults to "English".
+                status (str, optional): Status. Defaults to "Available".
+                type_ (Optional[str], optional): Dataset type. Defaults to "Source".
+                container_type (Optional[str], optional): Container type. Defaults to "Snapshot-Full".
+                snowflake (Optional[str], optional): Snowflake account connection. Defaults to None.
+                complexity (Optional[str], optional): Complexity. Defaults to None.
+                is_immutable (Optional[bool], optional): Flag for immutable datasets. Defaults to None.
+                is_mnpi (Optional[bool], optional): is_mnpi. Defaults to None.
+                is_pci (Optional[bool], optional): is_pci. Defaults to None.
+                is_pii (Optional[bool], optional): is_pii. Defaults to None.
+                is_client (Optional[bool], optional): is_client. Defaults to None.
+                is_public (Optional[bool], optional): is_public. Defaults to None.
+                is_internal (Optional[bool], optional): is_internal. Defaults to None.
+                is_confidential (Optional[bool], optional): is_confidential. Defaults to None.
+                is_highly_confidential (Optional[bool], optional): is_highly_confidential. Defaults to None.
+                is_active (Optional[bool], optional): is_active. Defaults to None.
+                owners (Optional[List[str]], optional): The owners of the dataset. Defaults to None.
+                application_id (Union[str, Dict[str, str], None], optional): The application ID of the dataset.
+                    Defaults to None.
+                report (Optional[Dict[str, str]], optional): The report metadata. Specifies the tier of the report.
+                    Required for registered reports to the catalog.
+
+            Returns:
+                Report: Fusion Report class.
+
+            Examples:
+                >>> from fusion import Fusion
+                >>> fusion = Fusion()
+                >>> dataset = fusion.report(identifier="DATASET_1")
+
+            Note:
+                See the dataset module for more information on functionalities of report objects.
+
+            """
+            report_obj = Report(
+                identifier=identifier,
+                title=title,
+                category=category,
+                description=description,
+                frequency=frequency,
+                is_internal_only_dataset=is_internal_only_dataset,
+                is_third_party_data=is_third_party_data,
+                is_restricted=is_restricted,
+                is_raw_data=is_raw_data,
+                maintainer=maintainer,
+                source=source,
+                region=region,
+                publisher=publisher,
+                product=product,
+                sub_category=sub_category,
+                tags=tags,
+                created_date=created_date,
+                modified_date=modified_date,
+                delivery_channel=delivery_channel,
+                language=language,
+                status=status,
+                type_=type_,
+                container_type=container_type,
+                snowflake=snowflake,
+                complexity=complexity,
+                is_immutable=is_immutable,
+                is_mnpi=is_mnpi,
+                is_pci=is_pci,
+                is_pii=is_pii,
+                is_client=is_client,
+                is_public=is_public,
+                is_internal=is_internal,
+                is_confidential=is_confidential,
+                is_highly_confidential=is_highly_confidential,
+                is_active=is_active,
+                owners=owners,
+                application_id=application_id,
+                report=report,
+                **kwargs,
+            )
+            report_obj.client = self
+            return report_obj
+    
+    from typing import Any, Dict, List, Optional, Union
+
+    def input_dataflow(  # noqa: PLR0913
+        self,
+        identifier: str,
+        title: str = "",
+        category: Union[str, List[str], None] = None,
+        description: str = "",
+        frequency: str = "Once",
+        is_internal_only_dataset: bool = False,
+        is_third_party_data: bool = True,
+        is_restricted: Optional[bool] = None,
+        is_raw_data: bool = True,
+        maintainer: Optional[str] = "J.P. Morgan Fusion",
+        source: Union[str, List[str], None] = None,
+        region: Union[str, List[str], None] = None,
+        publisher: str = "J.P. Morgan",
+        product: Union[str, List[str], None] = None,
+        sub_category: Union[str, List[str], None] = None,
+        tags: Union[str, List[str], None] = None,
+        created_date: Optional[str] = None,
+        modified_date: Optional[str] = None,
+        delivery_channel: Union[str, List[str]] = "API",
+        language: str = "English",
+        status: str = "Available",
+        type_: Optional[str] = "Flow",
+        container_type: Optional[str] = "Snapshot-Full",
+        snowflake: Optional[str] = None,
+        complexity: Optional[str] = None,
+        is_immutable: Optional[bool] = None,
+        is_mnpi: Optional[bool] = None,
+        is_pci: Optional[bool] = None,
+        is_pii: Optional[bool] = None,
+        is_client: Optional[bool] = None,
+        is_public: Optional[bool] = None,
+        is_internal: Optional[bool] = None,
+        is_confidential: Optional[bool] = None,
+        is_highly_confidential: Optional[bool] = None,
+        is_active: Optional[bool] = None,
+        owners: Optional[List[str]] = None,
+        application_id: Union[str, Dict[str, str], None] = None,
+        producer_application_id: Optional[Dict[str, str]] = None,
+        consumer_application_id: Union[List[Dict[str, str]], Dict[str, str], None] = None,
+        flow_details: Optional[Dict[str, str]] = None,
+        **kwargs: Any,
+    ) -> InputDataFlow:
+        flow_details = {"flowDirection": "Input"} if flow_details is None else flow_details
+        dataflow_obj = InputDataFlow(
+            identifier=identifier,
+            title=title,
+            category=category,
+            description=description,
+            frequency=frequency,
+            is_internal_only_dataset=is_internal_only_dataset,
+            is_third_party_data=is_third_party_data,
+            is_restricted=is_restricted,
+            is_raw_data=is_raw_data,
+            maintainer=maintainer,
+            source=source,
+            region=region,
+            publisher=publisher,
+            product=product,
+            sub_category=sub_category,
+            tags=tags,
+            created_date=created_date,
+            modified_date=modified_date,
+            delivery_channel=delivery_channel,
+            language=language,
+            status=status,
+            type_=type_,
+            container_type=container_type,
+            snowflake=snowflake,
+            complexity=complexity,
+            is_immutable=is_immutable,
+            is_mnpi=is_mnpi,
+            is_pci=is_pci,
+            is_pii=is_pii,
+            is_client=is_client,
+            is_public=is_public,
+            is_internal=is_internal,
+            is_confidential=is_confidential,
+            is_highly_confidential=is_highly_confidential,
+            is_active=is_active,
+            owners=owners,
+            application_id=application_id,
+            producer_application_id=producer_application_id,
+            consumer_application_id=consumer_application_id,
+            flow_details=flow_details,
+            **kwargs,
+        )
+        dataflow_obj.client = self
+        return dataflow_obj
+
+    def output_dataflow(  # noqa: PLR0913
+        self,
+        identifier: str,
+        title: str = "",
+        category: Union[str, List[str], None] = None,
+        description: str = "",
+        frequency: str = "Once",
+        is_internal_only_dataset: bool = False,
+        is_third_party_data: bool = True,
+        is_restricted: Optional[bool] = None,
+        is_raw_data: bool = True,
+        maintainer: Optional[str] = "J.P. Morgan Fusion",
+        source: Union[str, List[str], None] = None,
+        region: Union[str, List[str], None] = None,
+        publisher: str = "J.P. Morgan",
+        product: Union[str, List[str], None] = None,
+        sub_category: Union[str, List[str], None] = None,
+        tags: Union[str, List[str], None] = None,
+        created_date: Optional[str] = None,
+        modified_date: Optional[str] = None,
+        delivery_channel: Union[str, List[str]] = "API",
+        language: str = "English",
+        status: str = "Available",
+        type_: Optional[str] = "Flow",
+        container_type: Optional[str] = "Snapshot-Full",
+        snowflake: Optional[str] = None,
+        complexity: Optional[str] = None,
+        is_immutable: Optional[bool] = None,
+        is_mnpi: Optional[bool] = None,
+        is_pci: Optional[bool] = None,
+        is_pii: Optional[bool] = None,
+        is_client: Optional[bool] = None,
+        is_public: Optional[bool] = None,
+        is_internal: Optional[bool] = None,
+        is_confidential: Optional[bool] = None,
+        is_highly_confidential: Optional[bool] = None,
+        is_active: Optional[bool] = None,
+        owners: Optional[List[str]] = None,
+        application_id: Union[str, Dict[str, str], None] = None,
+        producer_application_id: Optional[Dict[str, str]] = None,
+        consumer_application_id: Union[List[Dict[str, str]], Dict[str, str], None] = None,
+        flow_details: Optional[Dict[str, str]] = None,
+        **kwargs: Any,
+    ) -> OutputDataFlow:
+        flow_details = {"flowDirection": "Output"} if flow_details is None else flow_details
+        dataflow_obj = OutputDataFlow(
+            identifier=identifier,
+            title=title,
+            category=category,
+            description=description,
+            frequency=frequency,
+            is_internal_only_dataset=is_internal_only_dataset,
+            is_third_party_data=is_third_party_data,
+            is_restricted=is_restricted,
+            is_raw_data=is_raw_data,
+            maintainer=maintainer,
+            source=source,
+            region=region,
+            publisher=publisher,
+            product=product,
+            sub_category=sub_category,
+            tags=tags,
+            created_date=created_date,
+            modified_date=modified_date,
+            delivery_channel=delivery_channel,
+            language=language,
+            status=status,
+            type_=type_,
+            container_type=container_type,
+            snowflake=snowflake,
+            complexity=complexity,
+            is_immutable=is_immutable,
+            is_mnpi=is_mnpi,
+            is_pci=is_pci,
+            is_pii=is_pii,
+            is_client=is_client,
+            is_public=is_public,
+            is_internal=is_internal,
+            is_confidential=is_confidential,
+            is_highly_confidential=is_highly_confidential,
+            is_active=is_active,
+            owners=owners,
+            application_id=application_id,
+            producer_application_id=producer_application_id,
+            consumer_application_id=consumer_application_id,
+            flow_details=flow_details,
+            **kwargs,
+        )
+        dataflow_obj.client = self
+        return dataflow_obj
+
+
+
 

@@ -938,130 +938,7 @@ class Fusion:
             warnings.warn(msg, stacklevel=2)
 
         return res if return_paths else None
-    
-   
 
-    def listen_to_events(
-        self,
-        last_event_id: Optional[str] = None,
-        catalog: Optional[str] = None,
-        url: str = "https://fusion.jpmorgan.com/api/v1/",
-    ) -> Optional[pd.DataFrame]:
-        """Run server sent event listener in the background. Retrieve results by running get_events.
-
-        Args:
-            last_event_id (Optional[str]): Last event ID (exclusive).
-            catalog (Optional[str]): catalog.
-            url (str): subscription url.
-        Returns:
-            Optional[pd.DataFrame]: If in_background is True then the function returns no output.
-                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
-        """
-
-        catalog = self._use_catalog(catalog)
-        import asyncio
-        import json
-        import threading
-
-        from aiohttp_sse_client import client as sse_client
-
-        from .utils import get_client
-
-        kwargs: Dict[str, Any] = {}
-        if last_event_id:
-            kwargs = {"headers": {"Last-Event-ID": last_event_id}}
-
-        async def async_events() -> None:
-            """Events sync function.
-
-            Returns:
-                None
-            """
-            timeout = 1e100
-            session = await get_client(self.credentials, timeout=timeout)
-            async with sse_client.EventSource(
-                f"{url}catalogs/{catalog}/notifications/subscribe",
-                session=session,
-                **kwargs,
-            ) as messages:
-                lst = []
-                try:
-                    async for msg in messages:
-                        event = json.loads(msg.data)
-                        lst.append(event)
-                        if self.events is None:
-                            self.events = pd.DataFrame()
-                        else:
-                            self.events = pd.concat([self.events, pd.DataFrame(lst)], ignore_index=True)
-                except TimeoutError as ex:
-                    raise ex from None
-                except BaseException:
-                    raise
-
-        _ = self.list_catalogs()  # refresh token
-        if "headers" in kwargs:
-            kwargs["headers"].update({"authorization": f"bearer {self.credentials.bearer_token}"})
-        else:
-            kwargs["headers"] = {
-                "authorization": f"bearer {self.credentials.bearer_token}",
-            }
-        if "http" in self.credentials.proxies:
-            kwargs["proxy"] = self.credentials.proxies["http"]
-        elif "https" in self.credentials.proxies:
-            kwargs["proxy"] = self.credentials.proxies["https"]
-        th = threading.Thread(target=asyncio.run, args=(async_events(),), daemon=True)
-        th.start()
-        return None
-
-    def get_events(
-        self,
-        last_event_id: Optional[str] = None,
-        catalog: Optional[str] = None,
-        in_background: bool = True,
-        url: str = "https://fusion.jpmorgan.com/api/v1/",
-    ) -> Optional[pd.DataFrame]:
-        """Run server sent event listener and print out the new events. Keyboard terminate to stop.
-
-        Args:
-            last_event_id (Optional[str]): id of the last event.
-            catalog (Optional[str]): catalog.
-            in_background (bool): execute event monitoring in the background (default = True).
-            url (str): subscription url.
-        Returns:
-            Optional[pd.DataFrame]: If in_background is True then the function returns no output.
-                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
-        """
-
-        catalog = self._use_catalog(catalog)
-        if not in_background:
-            from sseclient import SSEClient
-
-            _ = self.list_catalogs()  # refresh token
-            interrupted = False
-            messages = SSEClient(
-                session=self.session,
-                url=f"{url}catalogs/{catalog}/notifications/subscribe",
-                last_id=last_event_id,
-                headers={
-                    "authorization": f"bearer {self.credentials.bearer_token}",
-                },
-            )
-            lst = []
-            try:
-                for msg in messages:
-                    event = js.loads(msg.data)
-                    if event["type"] != "HeartBeatNotification":
-                        lst.append(event)
-            except KeyboardInterrupt:
-                interrupted = True
-            except Exception as e:
-                raise e
-            finally:
-                result = pd.DataFrame(lst) if interrupted or lst else None
-            return result
-        else:
-            return self.events
-        
     def list_dataset_lineage(
         self,
         dataset_id: str,
@@ -1594,7 +1471,7 @@ class Fusion:
                 Report: Fusion Report class.
 
             Examples:
-                >>> from fusion import Fusion
+                >>> from fusion37 import Fusion
                 >>> fusion = Fusion()
                 >>> dataset = fusion.report(identifier="DATASET_1")
 

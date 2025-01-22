@@ -6,7 +6,6 @@ from typing import Any, Dict, Generator, Union
 from unittest.mock import patch
 
 import pandas as pd
-import polars as pl
 import pytest
 
 from fusion37.authentication import FusionOAuthAdapter

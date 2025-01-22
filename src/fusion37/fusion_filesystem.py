@@ -6,10 +6,9 @@ import hashlib
 import io
 import logging
 import time
-from collections.abc import AsyncGenerator, Generator
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Generator, AsyncGenerator
 from urllib.parse import quote, urljoin
 
 import aiohttp

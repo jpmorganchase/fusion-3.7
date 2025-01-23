@@ -8,7 +8,7 @@ import logging
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, Generator, AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple, Union
 from urllib.parse import quote, urljoin
 
 import aiohttp

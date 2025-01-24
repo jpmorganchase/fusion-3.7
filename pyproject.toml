@@ -49,6 +49,7 @@ ipython = "7.31.1"
 ipykernel = "6.7.0"
 polars = "^0.17.0"
 requests-mock = "^1.12.1"
+pytest-mock = "3.6.1"
 
 [tool.ruff]
 line-length = 120
@@ -107,7 +108,7 @@ html.skip_covered = false
 parallel = true
 
 [tool.coverage.report]
-fail_under = 20
+fail_under = 40
 omit = [
     "py_src/fusion/_legacy/authentication.py",
     "py_src/fusion/_legacy/__init__.py"

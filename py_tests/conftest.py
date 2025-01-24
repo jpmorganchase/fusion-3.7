@@ -173,7 +173,7 @@ def mock_product_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
         },
         index=[0],
     )
-    with patch("fusion.fusion.pd.read_csv", return_value=product_df) as mock:
+    with patch("fusion37.fusion.pd.read_csv", return_value=product_df) as mock:
         yield mock
 
 

@@ -15,19 +15,6 @@ logger = logging.getLogger(__name__)
 VERBOSE_LVL = 25
 
 
-def _res_plural(ref_int: int, pluraliser: str = "s") -> str:
-    """Private function to return the plural form when the number is more than one.
-
-    Args:
-        ref_int (int): The reference integer that determines whether to return a plural suffix.
-        pluraliser (str, optional): The plural suffix. Defaults to "s".
-
-    Returns:
-        str: The plural suffix to append to a string.
-    """
-    return "" if abs(ref_int) == 1 else pluraliser
-
-
 def _is_url(url: str) -> bool:
     """Test whether the content of a string is a valid URL.
 

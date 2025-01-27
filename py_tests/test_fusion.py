@@ -127,17 +127,6 @@ def test_date_parsing() -> None:
     dtm = datetime.datetime(2020, 12, 12, 23, 55, 59, 342380, tzinfo=datetime.timezone.utc)
     assert _normalise_dt_param(dtm) == "2020-12-12"
 
-@pytest.mark.parametrize("ref_int", [-1, 0, 1, 2])
-@pytest.mark.parametrize("pluraliser", [None, "s", "es"])
-def test_res_plural(ref_int: int, pluraliser: str) -> None:
-    from fusion37.authentication import _res_plural
-
-    res = _res_plural(ref_int, pluraliser)
-    if abs(ref_int) == 1:
-        assert res == ""
-    else:
-        assert res == pluraliser
-
 def test_is_url() -> None:
     from fusion37.authentication import _is_url
 

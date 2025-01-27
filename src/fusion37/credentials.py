@@ -1,3 +1,4 @@
+"""Credentials and token management for Fusion API."""
 import datetime
 import json
 import logging
@@ -10,12 +11,13 @@ import jwt
 import requests
 
 from .exceptions import CredentialError
+from . import __version__
 
 logger = logging.getLogger(__name__)
 # Constants analogous to Rust defaults
 DEFAULT_GRANT_TYPE = "client_credentials"
 DEFAULT_AUTH_URL = "https://authe.jpmorgan.com/as/token.oauth2"
-VERSION = "0.0.1"  # Replace with your package version if needed
+VERSION = __version__
 
 
 class ProxyType:
@@ -30,18 +32,6 @@ class ProxyType:
             return ProxyType.HTTPS
         else:
             raise ValueError("Unrecognized proxy type")
-
-
-def untyped_proxies(proxies: Dict[str, str]) -> Dict[str, str]:
-    # In Rust, we converted enum ProxyType -> String. Here we assume proxies are already strings.
-    return proxies
-
-
-def client_builder_from_proxies(proxies: Dict[str, str]) -> Dict[str, str]:
-    # In Python, we can just pass 'proxies' to requests.
-    # This function in Rust sets up a client with given proxies.
-    # We'll store these for later use in get/post requests.
-    return proxies
 
 
 def find_cfg_file(file_path: str) -> str:
@@ -220,7 +210,7 @@ class FusionCredentials:
         self.headers = headers or {}
         self.kid = kid
         self.private_key = private_key
-        self.http_proxies = client_builder_from_proxies(self.proxies)
+        self.http_proxies = self.proxies
 
     @classmethod
     def from_client_id(
@@ -333,7 +323,7 @@ class FusionCredentials:
                 client_secret=client_secret,
                 resource=creds.resource,
                 auth_url=creds.auth_url,
-                proxies=untyped_proxies(creds.proxies),
+                proxies=creds.proxies,
                 fusion_e2e=creds.fusion_e2e,
                 headers=creds.headers,
                 kid=creds.kid,
@@ -343,7 +333,7 @@ class FusionCredentials:
             return cls.from_bearer_token(
                 bearer_token=None,
                 bearer_token_expiry=None,
-                proxies=untyped_proxies(creds.proxies),
+                proxies=creds.proxies,
                 fusion_e2e=creds.fusion_e2e,
                 headers=creds.headers,
             )
@@ -354,7 +344,7 @@ class FusionCredentials:
                 password=creds.password,
                 resource=creds.resource,
                 auth_url=creds.auth_url,
-                proxies=untyped_proxies(creds.proxies),
+                proxies=creds.proxies,
                 fusion_e2e=creds.fusion_e2e,
                 headers=creds.headers,
                 kid=creds.kid,

@@ -64,7 +64,7 @@ def test_call_for_bytes_object() -> None:
 
 def test_fusion_init_with_credentials(example_creds_dict_token: Dict[str, str]) -> None:
     """Test `Fusion` class initialization with credentials."""
-    credentials = FusionCredentials(bearer_token=example_creds_dict['token'])
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
     fusion = Fusion(credentials=credentials)
     assert isinstance(fusion, Fusion)
     assert fusion.root_url == "https://fusion.jpmorgan.com/api/v1/"

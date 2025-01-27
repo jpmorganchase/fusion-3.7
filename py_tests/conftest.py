@@ -62,6 +62,7 @@ def example_creds_dict_from_env(monkeypatch: pytest.MonkeyPatch) -> Dict[str, An
 
     return {
         "resource": "JPMC:URI:RS-97834-Fusion-PROD",
+        "client_id": example_client_id,
         "auth_url": "https://authe.mysite.com/as/token.oauth2",
         "proxies": {
             "http": "http://myproxy.com:8080",

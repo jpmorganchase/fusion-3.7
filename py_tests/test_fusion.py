@@ -1,3 +1,4 @@
+import datetime
 import json
 from io import BytesIO
 from pathlib import Path
@@ -7,9 +8,11 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 import requests
+import requests_mock
 
 from fusion37 import Fusion
 from fusion37.credentials import FusionCredentials
+from fusion37.utils import _normalise_dt_param
 
 
 @pytest.fixture
@@ -114,3 +117,41 @@ def test_use_catalog(example_creds_dict: Dict[str, str]) -> None:
 
     assert fusion._use_catalog(None) == "default_cat"
     assert fusion._use_catalog("specific_cat") == "specific_cat"
+
+def test_date_parsing() -> None:
+    assert _normalise_dt_param(20201212) == "2020-12-12"
+    assert _normalise_dt_param("20201212") == "2020-12-12"
+    assert _normalise_dt_param("2020-12-12") == "2020-12-12"
+    assert _normalise_dt_param(datetime.date(2020, 12, 12)) == "2020-12-12"
+    dtm = datetime.datetime(2020, 12, 12, 23, 55, 59, 342380, tzinfo=datetime.timezone.utc)
+    assert _normalise_dt_param(dtm) == "2020-12-12"
+
+@pytest.mark.parametrize("ref_int", [-1, 0, 1, 2])
+@pytest.mark.parametrize("pluraliser", [None, "s", "es"])
+def test_res_plural(ref_int: int, pluraliser: str) -> None:
+    from fusion37.authentication import _res_plural
+
+    res = _res_plural(ref_int, pluraliser)
+    if abs(ref_int) == 1:
+        assert res == ""
+    else:
+        assert res == pluraliser
+
+def test_is_url() -> None:
+    from fusion37.authentication import _is_url
+
+    assert _is_url("https://www.google.com")
+    assert _is_url("http://www.google.com/some/path?qp1=1&qp2=2")
+    assert not _is_url("www.google.com")
+    assert not _is_url("google.com")
+    assert not _is_url("google")
+    assert not _is_url("googlecom")
+    assert not _is_url("googlecom.")
+    assert not _is_url(3.141)  # type: ignore
+
+def test_fusion_class(fusion_obj: Fusion) -> None:
+    assert fusion_obj
+    assert repr(fusion_obj)
+    assert fusion_obj.default_catalog == "common"
+    fusion_obj.default_catalog = "other"
+    assert fusion_obj.default_catalog == "other"

@@ -114,7 +114,6 @@ def example_creds_dict_empty_pxy(example_creds_dict: Dict[str, Any]) -> Dict[str
 @pytest.fixture(
     params=[
         "example_creds_dict",
-        # "example_creds_dict_from_env", ## Enable this test after fixing ENV VAR reading in Rust
         "example_creds_dict_https_pxy",
         "example_creds_dict_no_pxy",
         "example_creds_dict_empty_pxy",

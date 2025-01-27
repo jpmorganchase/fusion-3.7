@@ -16,14 +16,6 @@ from fusion37.utils import _normalise_dt_param
 
 
 @pytest.fixture
-def example_creds_dict() -> Dict[str, str]:
-    """Fixture providing example credentials."""
-    return {
-        "token": "test_token",
-    }
-
-
-@pytest.fixture
 def mock_response_data() -> Dict[str, Any]:
     """Fixture providing mock API response data."""
     return {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}

@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 import jwt
 import requests
 
-from .exceptions import CredentialError
 from . import __version__
+from .exceptions import CredentialError
 
 logger = logging.getLogger(__name__)
 # Constants analogous to Rust defaults

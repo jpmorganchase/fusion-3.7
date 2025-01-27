@@ -30,7 +30,6 @@ from .utils import (
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
-    # download_single_file_threading,
     get_default_fs,
     get_session,
     is_dataset_raw,
@@ -38,7 +37,6 @@ from .utils import (
     path_to_url,
     requests_raise_for_status,
     tqdm_joblib,
-    # stream_single_file_new_session,
     upload_files,
     validate_file_names,
 )

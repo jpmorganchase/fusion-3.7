@@ -109,7 +109,7 @@ html.skip_covered = false
 parallel = true
 
 [tool.coverage.report]
-fail_under = 50
+fail_under = 57
 omit = [
     "py_src/fusion/_legacy/authentication.py",
     "py_src/fusion/_legacy/__init__.py"

@@ -616,6 +616,16 @@ class Attributes:
             >>> attributes = fusion.attributes()._from_dataframe(data)
 
         """
+        # Make a copy to avoid modifying the original DataFrame
+        data = data.copy()
+
+        # Convert boolean and integer columns to object type for compatibility
+        for col in data.columns:
+            if data[col].dtype == "bool":
+                data[col] = data[col].astype("object")  # Convert boolean to object
+            elif np.issubdtype(data[col].dtype, np.integer):
+                data[col] = data[col].astype("float")  # Convert integer to float
+
         data = data.replace(to_replace=np.nan, value=None)
         data = data.reset_index() if "index" not in data.columns else data
         attributes = [Attribute._from_series(series) for _, series in data.iterrows()]

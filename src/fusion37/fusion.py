@@ -221,7 +221,7 @@ class Fusion:
 
     def list_products(
             self,
-            contains: Union[str,list,None] = None,
+            contains: Union[str, List[str], None] = None,
             id_contains: bool = False,
             catalog: Optional[str] = None,
             output: bool = False,
@@ -290,9 +290,9 @@ class Fusion:
 
     def list_datasets(  # noqa: PLR0913
             self,
-            contains: Union[str, list, None] = None,
+            contains: Union[str, List[str], None] = None,
             id_contains: bool = False,
-            product: Union[str, list, None] = None,
+            product: Union[str, List[str], None] = None,
             catalog: Optional[str] = None,
             output: bool = False,
             max_results: int = -1,

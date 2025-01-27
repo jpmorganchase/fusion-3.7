@@ -8,7 +8,6 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 import requests
-import requests_mock
 
 from fusion37 import Fusion
 from fusion37.credentials import FusionCredentials

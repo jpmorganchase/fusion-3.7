@@ -15,6 +15,14 @@ from fusion37.utils import _normalise_dt_param
 
 
 @pytest.fixture
+def example_creds_dict_token() -> Dict[str, str]:
+    """Fixture providing example credentials."""
+    return {
+        "token": "test_token",
+    }
+
+
+@pytest.fixture
 def mock_response_data() -> Dict[str, Any]:
     """Fixture providing mock API response data."""
     return {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
@@ -54,7 +62,7 @@ def test_call_for_bytes_object() -> None:
         assert byte_obj.read() == mock_content
 
 
-def test_fusion_init_with_credentials(example_creds_dict: Dict[str, str]) -> None:
+def test_fusion_init_with_credentials(example_creds_dict_token: Dict[str, str]) -> None:
     """Test `Fusion` class initialization with credentials."""
     credentials = FusionCredentials(bearer_token=example_creds_dict['token'])
     fusion = Fusion(credentials=credentials)
@@ -63,9 +71,9 @@ def test_fusion_init_with_credentials(example_creds_dict: Dict[str, str]) -> Non
     assert fusion.download_folder == "downloads"
 
 
-def test_fusion_init_with_path(example_creds_dict: Dict[str, str], tmp_path: Path) -> None:
+def test_fusion_init_with_path(example_creds_dict_token: Dict[str, str], tmp_path: Path) -> None:
     """Test `Fusion` class initialization with a credentials file."""
-    example_creds_dict.update({
+    example_creds_dict_token.update({
         "client_id": "test_client_id",
         "client_secret": "test_client_secret",
         "username": "test_user",
@@ -73,7 +81,7 @@ def test_fusion_init_with_path(example_creds_dict: Dict[str, str], tmp_path: Pat
     })
     credentials_file = tmp_path / "credentials.json"
     with credentials_file.open("w") as f:
-        json.dump(example_creds_dict, f)
+        json.dump(example_creds_dict_token, f)
 
     fusion = Fusion(credentials=str(credentials_file))
     assert isinstance(fusion, Fusion)
@@ -81,18 +89,18 @@ def test_fusion_init_with_path(example_creds_dict: Dict[str, str], tmp_path: Pat
     assert fusion.download_folder == "downloads"
 
 
-def test_fusion_repr(example_creds_dict: Dict[str, str]) -> None:
+def test_fusion_repr(example_creds_dict_token: Dict[str, str]) -> None:
     """Test the `__repr__` method of the `Fusion` class."""
-    credentials = FusionCredentials(bearer_token=example_creds_dict['token'])
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
     fusion = Fusion(credentials=credentials)
     repr_str = repr(fusion)
     assert "Fusion object" in repr_str
     assert "Available methods" in repr_str
 
 
-def test_default_catalog_property(example_creds_dict: Dict[str, str]) -> None:
+def test_default_catalog_property(example_creds_dict_token: Dict[str, str]) -> None:
     """Test the `default_catalog` property of the `Fusion` class."""
-    credentials = FusionCredentials(bearer_token=example_creds_dict['token'])
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
     fusion = Fusion(credentials=credentials)
     assert fusion.default_catalog == "common"
 
@@ -100,9 +108,9 @@ def test_default_catalog_property(example_creds_dict: Dict[str, str]) -> None:
     assert fusion.default_catalog == "new_catalog"
 
 
-def test_use_catalog(example_creds_dict: Dict[str, str]) -> None:
+def test_use_catalog(example_creds_dict_token: Dict[str, str]) -> None:
     """Test the `_use_catalog` method."""
-    credentials = FusionCredentials(bearer_token=example_creds_dict['token'])
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
     fusion = Fusion(credentials=credentials)
     fusion.default_catalog = "default_cat"
 

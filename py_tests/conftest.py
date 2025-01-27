@@ -186,3 +186,25 @@ def mock_dataset_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
     )
     with patch("fusion37.fusion.pd.read_csv", return_value=dataset_df) as mock:
         yield mock
+
+@pytest.fixture
+def data_table_as_csv(data_table: pd.DataFrame) -> str:
+    # Write the DataFrame to a CSV string
+    from io import StringIO
+
+    buffer = StringIO()
+    data_table.to_csv(buffer, index=False)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def data_table() -> pd.DataFrame:
+    # Create a simple DataFrame
+    return pd.DataFrame(
+        {
+            "col_1": range(10),
+            "col_2": [str(x) for x in range(10)],
+            "col_3": [x / 3.14159 for x in range(10)],
+        }
+    )

@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "pyfusion"
+name = "pyfusion37"
 version = "0.0.1"
 description = "JPMC Fusion Developer Tools"
 homepage = "https://github.com/jpmorganchase/fusion-3.7"

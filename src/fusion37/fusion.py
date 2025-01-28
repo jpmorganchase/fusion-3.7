@@ -8,7 +8,7 @@ import sys
 import warnings
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 from joblib import Parallel, delayed
@@ -1259,7 +1259,7 @@ class Fusion:
             )
             dataset_obj.client = self
             return dataset_obj
-    
+
 
     def attribute(  # noqa: PLR0913
             self,
@@ -1418,7 +1418,7 @@ class Fusion:
             report: Optional[Dict[str, str]] = None,
             **kwargs: Any,
         ) -> Report:
-            """Instantiate Report object with this client for metadata creation 
+            """Instantiate Report object with this client for metadata creation
             for managing regulatory reporting metadata.
 
             Args:
@@ -1520,8 +1520,6 @@ class Fusion:
             )
             report_obj.client = self
             return report_obj
-    
-    from typing import Any, Dict, List, Optional, Union
 
     def input_dataflow(  # noqa: PLR0913
         self,
@@ -1705,6 +1703,132 @@ class Fusion:
         dataflow_obj.client = self
         return dataflow_obj
 
+    def to_df(  # noqa: PLR0913
+            self,
+            dataset: str,
+            dt_str: str = "latest",
+            dataset_format: str = "parquet",
+            catalog: str | None = None,
+            n_par: int | None = None,
+            show_progress: bool = True,
+            columns: list[str] | None = None,
+            filters: Any | None = None,
+            force_download: bool = False,
+            download_folder: str | None = None,
+            dataframe_type: str = "pandas",
+            **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Gets distributions for a specified date or date range and returns the data as a dataframe.
 
+        Args:
+            dataset (str): A dataset identifier
+            dt_str (str, optional): Either a single date or a range identified by a start or end date,
+                or both separated with a ":". Defaults to 'latest' which will return the most recent
+                instance of the dataset.
+            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            n_par (int, optional): Specify how many distributions to download in parallel.
+                Defaults to all cpus available.
+            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            columns (List, optional): A list of columns to return from a parquet file. Defaults to None
+            filters (List, optional): List[Tuple] or List[List[Tuple]] or None (default)
+                Rows which do not match the filter predicate will be removed from scanned data.
+                Partition keys embedded in a nested directory structure will be exploited to avoid
+                loading files at all if they contain no matching rows. If use_legacy_dataset is True,
+                filters can only reference partition keys and only a hive-style directory structure
+                is supported. When setting use_legacy_dataset to False, also within-file level filtering
+                and different partitioning schemes are supported.
+                More on https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+            force_download (bool, optional): If True then will always download a file even
+                if it is already on disk. Defaults to False.
+            download_folder (str, optional): The path, absolute or relative, where downloaded files are saved.
+                Defaults to download_folder as set in __init__
+            dataframe_type (str, optional): Type
+        Returns:
+            class:`pandas.DataFrame`: a dataframe containing the requested data.
+                If multiple dataset instances are retrieved then these are concatenated first.
+        """
+        raise NotImplementedError("Method not implemented")
 
+    def to_table(  # noqa: PLR0913
+            self,
+            dataset: str,
+            dt_str: str = "latest",
+            dataset_format: str = "parquet",
+            catalog: str | None = None,
+            n_par: int | None = None,
+            show_progress: bool = True,
+            columns: list[str] | None = None,
+            filters: Any | None = None,
+            force_download: bool = False,
+            download_folder: str | None = None,
+            **kwargs: Any,
+    ) -> Any:
+        """Gets distributions for a specified date or date range and returns the data as an arrow table.
 
+        Args:
+            dataset (str): A dataset identifier
+            dt_str (str, optional): Either a single date or a range identified by a start or end date,
+                or both separated with a ":". Defaults to 'latest' which will return the most recent
+                instance of the dataset.
+            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            n_par (int, optional): Specify how many distributions to download in parallel.
+                Defaults to all cpus available.
+            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            columns (List, optional): A list of columns to return from a parquet file. Defaults to None
+            filters (List, optional): List[Tuple] or List[List[Tuple]] or None (default)
+                Rows which do not match the filter predicate will be removed from scanned data.
+                Partition keys embedded in a nested directory structure will be exploited to avoid
+                loading files at all if they contain no matching rows. If use_legacy_dataset is True,
+                filters can only reference partition keys and only a hive-style directory structure
+                is supported. When setting use_legacy_dataset to False, also within-file level filtering
+                and different partitioning schemes are supported.
+                More on https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+            force_download (bool, optional): If True then will always download a file even
+                if it is already on disk. Defaults to False.
+            download_folder (str, optional): The path, absolute or relative, where downloaded files are saved.
+                Defaults to download_folder as set in __init__
+        Returns:
+            class:`pyarrow.Table`: a dataframe containing the requested data.
+                If multiple dataset instances are retrieved then these are concatenated first.
+        """
+        raise NotImplementedError("Method not implemented")
+
+    def listen_to_events(
+            self,
+            last_event_id: str | None = None,
+            catalog: str | None = None,
+            url: str = "https://fusion.jpmorgan.com/api/v1/",
+    ) -> None | pd.DataFrame:
+        """Run server sent event listener in the background. Retrieve results by running get_events.
+
+        Args:
+            last_event_id (str): Last event ID (exclusive).
+            catalog (str): catalog.
+            url (str): subscription url.
+        Returns:
+            Union[None, class:`pandas.DataFrame`]: If in_background is True then the function returns no output.
+                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
+        """
+        raise NotImplementedError("Method not implemented")
+
+    def get_events(
+            self,
+            last_event_id: str | None = None,
+            catalog: str | None = None,
+            in_background: bool = True,
+            url: str = "https://fusion.jpmorgan.com/api/v1/",
+    ) -> None | pd.DataFrame:
+        """Run server sent event listener and print out the new events. Keyboard terminate to stop.
+
+        Args:
+            last_event_id (str): id of the last event.
+            catalog (str): catalog.
+            in_background (bool): execute event monitoring in the background (default = True).
+            url (str): subscription url.
+        Returns:
+            Union[None, class:`pandas.DataFrame`]: If in_background is True then the function returns no output.
+                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
+        """
+        raise NotImplementedError("Method not implemented")

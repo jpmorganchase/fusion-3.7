@@ -709,3 +709,34 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     assert len(res) == 1
     assert res[0][0]
     assert "sample" in res[0][1]
+
+def test_to_df(fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    datasetseries = "2020-04-04"
+    file_format = "csv"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.to_df(catalog=catalog, dataset=dataset, dt_str=datasetseries, dataset_format=file_format)
+
+
+def test_to_table(fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    datasetseries = "2020-04-04"
+    file_format = "csv"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.to_table(catalog=catalog, dataset=dataset, dt_str=datasetseries, dataset_format=file_format)
+
+def test_listen_to_events(fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.listen_to_events(catalog=catalog)
+
+def test_get_events(fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.get_events(catalog=catalog)

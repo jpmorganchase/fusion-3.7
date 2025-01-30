@@ -67,11 +67,11 @@ class Attribute(metaclass=CamelCaseMeta):
         self.source_field_id = (
             tidy_string(self.source_field_id).lower().replace(" ", "_") if self.source_field_id else self.identifier
         )
-        self.available_from = (
-            convert_date_format(self.available_from)
-            if isinstance(self.available_from, str) and not pd.isna(self.available_from)
-            else self.available_from
-        )
+        print(f"Before Conversion: {self.available_from} (type: {type(self.available_from)})")
+        if isinstance(self.available_from, str) and not pd.isna(self.available_from):
+            self.available_from = convert_date_format(self.available_from)
+        print(f"After Conversion: {self.available_from} (type: {type(self.available_from)})")
+           
         self.deprecated_from = convert_date_format(self.deprecated_from) if self.deprecated_from else None
         self.data_type = Types[str(self.data_type).strip().rsplit(".", maxsplit=1)[-1].title()]
         self.application_id = (

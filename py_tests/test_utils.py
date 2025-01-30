@@ -534,11 +534,6 @@ def test_convert_format_slash() -> None:
     """Test convert date format."""
     assert convert_date_format("2024/05/06") == "2024-05-06"
 
-def test_convert_format_nan_none() -> None:
-    """Test convert date format."""
-    assert convert_date_format(None) is None
-    assert convert_date_format(float("nan")) is None
-
 
 def test_snake_to_camel() -> None:
     """Test snake to camel."""

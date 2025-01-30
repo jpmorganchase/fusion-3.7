@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 from unittest import mock
+from unittest.mock import MagicMock, patch
 
 import asynctest
+import fsspec
 import pytest
 from aiohttp import ClientResponse
 
@@ -101,3 +103,80 @@ async def test_isdir_false(http_fs_instance: FusionHTTPFileSystem) -> None:
     http_fs_instance._info = asynctest.CoroutineMock(return_value={"type": "file"})
     result = await http_fs_instance._isdir("path_file")
     assert not result
+
+@patch("requests.Session")
+def test_stream_single_file(mock_session_class: MagicMock, example_creds_dict: Dict[str, Any], tmp_path: Path) -> None:
+    url = "http://example.com/data"
+    output_file = MagicMock(spec=fsspec.spec.AbstractBufferedFile)
+    output_file.path = "./output_file_path/file.txt"
+    output_file.name = "file.txt"
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Create a mock response object with the necessary context manager methods
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.iter_content = MagicMock(return_value=[b"0123456789", b""])
+    # Mock the __enter__ method to return the mock response itself
+    mock_response.__enter__.return_value = mock_response
+    # Mock the __exit__ method to do nothing
+    mock_response.__exit__.return_value = None
+
+    # Set up the mock session to return the mock response
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+    mock_session_class.return_value = mock_session
+
+    # Create an instance of FusionHTTPFileSystem
+    http_fs_instance = FusionHTTPFileSystem(credentials=creds)
+    http_fs_instance.sync_session = mock_session
+
+    # Run the function
+    results = http_fs_instance.stream_single_file(url, output_file)
+
+    # Assertions to verify the behavior
+    output_file.write.assert_any_call(b"0123456789")
+    assert results == (True, output_file.path, None)
+
+
+@patch("requests.Session")
+def test_stream_single_file_exception(
+    mock_session_class: MagicMock, example_creds_dict: Dict[str, Any], tmp_path: Path
+) -> None:
+    url = "http://example.com/data"
+    output_file = MagicMock(spec=fsspec.spec.AbstractBufferedFile)
+    output_file.path = "./output_file_path/file.txt"
+    output_file.name = "file.txt"
+
+    # Create a mock response object with the necessary context manager methods
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.iter_content = MagicMock(side_effect=Exception("Test exception"))
+    # Mock the __enter__ method to return the mock response itself
+    mock_response.__enter__.return_value = mock_response
+    # Mock the __exit__ method to do nothing
+    mock_response.__exit__.return_value = None
+
+    # Set up the mock session to return the mock response
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+    mock_session_class.return_value = mock_session
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Create an instance of FusionHTTPFileSystem
+    http_fs_instance = FusionHTTPFileSystem(credentials=creds)
+    http_fs_instance.sync_session = mock_session
+
+    # Run the function and catch the exception
+    results = http_fs_instance.stream_single_file(url, output_file)
+
+    # Assertions to verify the behavior
+    output_file.close.assert_called_once()
+    assert results == (False, output_file.path, "Test exception")

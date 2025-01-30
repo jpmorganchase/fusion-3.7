@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import json as js
 import logging
+import math
 import multiprocessing as mp
 import os
 import re
@@ -630,9 +631,11 @@ def make_bool(obj: Any) -> bool:
     bool_obj = bool(obj)
     return bool_obj
 
-
 def convert_date_format(date_str: str) -> Any:
     """Convert date to YYYY-MM-DD format."""
+    if date_str is None or (isinstance(date_str, float) and math.isnan(date_str)):
+        return None  # Return None for NaN or missing values
+
     desired_format = "%Y-%m-%d"
     date_obj = parser.parse(date_str)
     formatted_date = date_obj.strftime(desired_format)

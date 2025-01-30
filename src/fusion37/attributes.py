@@ -69,7 +69,7 @@ class Attribute(metaclass=CamelCaseMeta):
         )
         self.available_from = (
             convert_date_format(self.available_from)
-            if isinstance(self.available_from, str)
+            if isinstance(self.available_from, str) and not pd.isna(self.available_from)
             else self.available_from
         )
         self.deprecated_from = convert_date_format(self.deprecated_from) if self.deprecated_from else None

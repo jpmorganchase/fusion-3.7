@@ -632,11 +632,16 @@ def make_bool(obj: Any) -> bool:
 
 def convert_date_format(date_str: str) -> Any:
     """Convert date to YYYY-MM-DD format."""
+    if pd.isna(date_str) or not isinstance(date_str, str):
+        return None
 
-    desired_format = "%Y-%m-%d"
-    date_obj = parser.parse(date_str)
-    formatted_date = date_obj.strftime(desired_format)
-    return formatted_date
+    try:
+        desired_format = "%Y-%m-%d"
+        date_obj = parser.parse(date_str)
+        formatted_date = date_obj.strftime(desired_format)
+        return formatted_date
+    except(ValueError, TypeError):
+        return None
 
 
 def _is_json(data: str) -> bool:

@@ -26,6 +26,38 @@ if TYPE_CHECKING:
 
 @dataclass
 class Attribute(metaclass=CamelCaseMeta):
+    """Fusion Attribute class for managing attributes metadata in a Fusion catalog.
+
+    Attributes:
+        identifier (str): The unique identifier for the attribute.
+        index (int): Attribute index.
+        data_type (str | Types, optional): Datatype of attribute. Defaults to "String".
+        title (str, optional): Attribute title. If not provided, defaults to identifier.
+        description (str, optional): Attribute description. If not provided, defaults to identifier.
+        is_dataset_key (bool, optional): Flag for primary keys. Defaults to False.
+        source (str | None, optional): Name of data vendor which provided the data. Defaults to None.
+        source_field_id (str | None, optional): Original identifier of attribute, if attribute has been renamed.
+            If not provided, defaults to identifier.
+        is_internal_dataset_key (bool | None, optional): Flag for internal primary keys. Defaults to None.
+        is_externally_visible (bool | None, optional): Flag for externally visible attributes. Defaults to True.
+        unit (Any | None, optional): Unit of attribute. Defaults to None.
+        multiplier (float, optional): Multiplier for unit. Defaults to 1.0.
+        is_propagation_eligible (bool | None, optional): Flag for propagation eligibility. Defaults to None.
+        is_metric (bool | None, optional): Flag for attributes that are metrics. Defaults to None.
+        available_from (str | None, optional): Date from which the attribute is available. Defaults to None.
+        deprecated_from (str | None, optional): Date from which the attribute is deprecated. Defaults to None.
+        term (str, optional): Term. Defaults to "bizterm1".
+        dataset (int | None, optional): Dataset. Defaults to None.
+        attribute_type (str | None, optional): Attribute type. Defaults to None.
+        application_id (str | dict[str, str] | None, optional): The seal ID of the dataset in string format,
+            or a dictionary containing 'id' and 'type'. Used for catalog attributes. Defaults to None.
+        publisher (str | None, optional): Publisher of the attribute. Used for catalog attributes. Defaults to None.
+        is_key_data_element (bool | None, optional): Flag for key data elements. Used for attributes registered to
+            Reports. Defaults to None.
+        _client (Fusion | None, optional): Fusion client object. Defaults to None.
+
+    """
+
     identifier: str
     index: int
     data_type: Types = cast(Types, Types.String)
@@ -68,7 +100,7 @@ class Attribute(metaclass=CamelCaseMeta):
             tidy_string(self.source_field_id).lower().replace(" ", "_")
             if self.source_field_id else self.identifier
         )
-        self.available_from = convert_date_format(self.available_from)                   
+        self.available_from = convert_date_format(self.available_from) if self.available_from else None              
         self.deprecated_from = convert_date_format(self.deprecated_from) if self.deprecated_from else None
         self.data_type = Types[str(self.data_type).strip().rsplit(".", maxsplit=1)[-1].title()]
         self.application_id = (
@@ -109,6 +141,29 @@ class Attribute(metaclass=CamelCaseMeta):
         cls: Type["Attribute"],
         series: pd.Series,
     ) -> "Attribute":
+        """Instantiate an Attribute object from a pandas Series.
+
+            Args:
+                series (pd.Series[Any]): Attribute metadata as a pandas Series.
+
+            Returns:
+                Attribute: Attribute object.
+
+            Examples:
+
+                >>> from fusion37 import Fusion
+                >>> fusion = Fusion()
+                >>> import pandas as pd
+                >>> series = pd.Series({
+                ...     "identifier": "my_attribute",
+                ...     "index": 0,
+                ...     "data_type": "String",
+                ...     "title": "My Attribute",
+                ...     "description": "My attribute description"
+                ... })
+                >>> attribute = fusion.attribute(identifier="my_attribute", index=0)._from_series(series)
+
+        """
         # Explicitly replace np.nan with None
         series = series.rename(lambda x: x.replace(" ", "").replace("_", "").lower()).apply(
             lambda x: None if isinstance(x, float) and np.isnan(x) else x

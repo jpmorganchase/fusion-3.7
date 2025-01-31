@@ -754,7 +754,34 @@ def test_attributes_to_dataframe() -> None:
     assert test_df["dataset"].iloc[0] is None
     assert test_df["attributeType"].iloc[0] is None
 
-
+def test_attributes_to_dataframe_empty_csv() -> None:
+    """Test attributes class to_dataframe method."""
+    test_attributes = Attributes([])
+    test_df = test_attributes.to_dataframe()
+    test_df.to_csv("attributes.csv", index=False)
+    schema = pd.read_csv("attributes.csv")
+    test_attributes_from_csv = Attributes().from_object(schema)
+    assert schema.shape == (1, 22)  # Updated column count
+    assert test_attributes_from_csv.attributes[0].title == "Example Attribute"
+    assert test_attributes_from_csv.attributes[0].identifier == "example_attribute"
+    assert test_attributes_from_csv.attributes[0].index == 0
+    assert not test_attributes_from_csv.attributes[0].isDatasetKey
+    assert test_attributes_from_csv.attributes[0].dataType == Types.String
+    assert test_attributes_from_csv.attributes[0].description == "Example Attribute"
+    assert test_attributes_from_csv.attributes[0].source is None
+    assert test_attributes_from_csv.attributes[0].sourceFieldId == "example_attribute"
+    assert test_attributes_from_csv.attributes[0].isInternalDatasetKey is None
+    assert test_attributes_from_csv.attributes[0].isExternallyVisible
+    assert test_attributes_from_csv.attributes[0].unit is None
+    assert test_attributes_from_csv.attributes[0].multiplier == 1.0
+    assert test_attributes_from_csv.attributes[0].isMetric is None
+    assert test_attributes_from_csv.attributes[0].isPropagationEligible is None
+    assert test_attributes_from_csv.attributes[0].availableFrom is None
+    assert test_attributes_from_csv.attributes[0].deprecatedFrom is None
+    assert test_attributes_from_csv.attributes[0].term == "bizterm1"
+    assert test_attributes_from_csv.attributes[0].dataset is None
+    assert test_attributes_from_csv.attributes[0].attributeType is None
+    
 def test_attributes_to_dataframe_empty() -> None:
     """Test attributes class to_dataframe method with empty attributes."""
     test_attributes = Attributes([])

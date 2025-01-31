@@ -65,13 +65,10 @@ class Attribute(metaclass=CamelCaseMeta):
         self.title = tidy_string(self.title) if self.title != "" else self.identifier.replace("_", " ").title()
         self.description = tidy_string(self.description) if self.description and self.description != "" else self.title
         self.source_field_id = (
-            tidy_string(self.source_field_id).lower().replace(" ", "_") if self.source_field_id else self.identifier
+            tidy_string(self.source_field_id).lower().replace(" ", "_")
+            if self.source_field_id else self.identifier
         )
-        print(f"Before Conversion: {self.available_from} (type: {type(self.available_from)})")
-        if isinstance(self.available_from, str) and not pd.isna(self.available_from):
-            self.available_from = convert_date_format(self.available_from)
-        print(f"After Conversion: {self.available_from} (type: {type(self.available_from)})")
-           
+        self.available_from = convert_date_format(self.available_from)                   
         self.deprecated_from = convert_date_format(self.deprecated_from) if self.deprecated_from else None
         self.data_type = Types[str(self.data_type).strip().rsplit(".", maxsplit=1)[-1].title()]
         self.application_id = (
@@ -112,9 +109,11 @@ class Attribute(metaclass=CamelCaseMeta):
         cls: Type["Attribute"],
         series: pd.Series,
     ) -> "Attribute":
-        series = series.rename(lambda x: x.replace(" ", "").replace("_", "").lower()).replace(
-            to_replace=np.nan, value=None
+        # Explicitly replace np.nan with None
+        series = series.rename(lambda x: x.replace(" ", "").replace("_", "").lower()).apply(
+            lambda x: None if isinstance(x, float) and np.isnan(x) else x
         )
+        
         data_type = series.get("datatype", cast(Types, Types.String))
         data_type = series.get("type", cast(Types, Types.String)) if data_type is None else data_type
         source = series.get("source", None)
@@ -621,10 +620,10 @@ class Attributes:
 
         """
         # Make a copy to avoid modifying the original DataFrame
-        data = data.copy()
+        data = data.copy()       
 
         # Convert boolean and integer columns to object type for compatibility
-        for col in data.columns:
+        for col in data.columns:            
             if data[col].dtype == "bool":
                 data[col] = data[col].astype("object")  # Convert boolean to object
             elif np.issubdtype(data[col].dtype, np.integer):
@@ -684,12 +683,12 @@ class Attributes:
             >>> attributes = fusion.attributes().from_object(data)
 
         """
-        if isinstance(attributes_source, list):
+        if isinstance(attributes_source, list):         
             if all(isinstance(attr, Attribute) for attr in attributes_source):
                 attributes = Attributes(cast(List[Attribute], attributes_source))
             elif all(isinstance(attr, dict) for attr in attributes_source):
                 attributes = Attributes._from_dict_list(cast(List[Dict[str, Any]], attributes_source))
-        elif isinstance(attributes_source, pd.DataFrame):
+        elif isinstance(attributes_source, pd.DataFrame):            
             attributes = Attributes._from_dataframe(attributes_source)
         else:
             raise ValueError(f"Could not resolve the object provided: {attributes_source}")

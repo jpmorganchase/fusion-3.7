@@ -362,7 +362,7 @@ def test_get_session(mocker: MockerFixture, credentials: FusionCredentials, fusi
     assert session
 
     # Mock out the request to raise an exception
-    mocker.patch("fusion37.utils._get_canonical_root_url", side_effect=Exception("Failed to get canonical root url"))
+    mocker.patch("fusion.utils._get_canonical_root_url", side_effect=Exception("Failed to get canonical root url"))
     session = get_session(credentials, fusion_obj.root_url)
     for mnt, adapter_obj in session.adapters.items():
         if isinstance(adapter_obj, FusionOAuthAdapter):

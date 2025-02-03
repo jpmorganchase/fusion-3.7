@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "pyfusion"
+name = "pyfusion37"
 version = "0.0.1"
 description = "JPMC Fusion Developer Tools"
 homepage = "https://github.com/jpmorganchase/fusion-3.7"
@@ -15,23 +15,40 @@ classifiers = [
     "Programming Language :: Python :: 3.7",
     "Typing :: Typed",
 ]
+packages = [
+    { include = "fusion", from = "src" },
+    { include = "py_tests", format = "sdist" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.7.1,<3.8"
-requests = "<=2.13.0"
+requests = "<=2.24.0"
 pandas = "<=0.24.2"
 joblib = "<=1.2.0"
 tabulate = "<=0.7.7"
-pyarrow = "<=0.15.1"
 fsspec = "<2023.1.0"
 aiohttp = "<=3.7.4"
 certifi = "<=2018.11.8"
-pytz = "^2024.2"
+tqdm = "<=4.48.0"
+cryptography = "<=3.1.0"
+pyjwt = "<=1.5.3"
+urllib3 = "1.26.6"
+pytz = "*"  # Required by pandas
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"
 tox = "<4"
 pytest = ">=7.0.0,<7.5.0"
+isort = "<=4.2.5"
+black = "<=18.9"
+pytest-random-order = "^1.1.1"
+pytest-html = "^3.1.1"
+pytest-cov = "<3.0"
+ipython = "7.31.1"
+ipykernel = "6.7.0"
+requests-mock = "<=1.5.2"
+pytest-mock = "3.6.1"
+asynctest = "^0.13.0"
 
 [tool.ruff]
 line-length = 120
@@ -60,6 +77,8 @@ extend-ignore = [
     "N815",    # Allow mixedCase variables for request body construction
     "N806",    # Allow mixedCase variables for request body construction
     "N803",    # Allow mixedCase variables for request body construction
+    "UP006",
+    "UP007",
 ]
 
 [tool.ruff.lint.isort]
@@ -71,3 +90,29 @@ max-args = 7
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--cov fusion --html .reports/py/index.html --cov-report html:.reports/py/cov --cov-report term --random-order"
+minversion = "7.0"
+pythonpath = ["src", "py_tests"]
+testpaths = "py_tests"
+pythonfiles = "test_*.py"
+
+[tool.coverage]
+html.show_contexts = true
+html.skip_covered = false
+
+
+[tool.coverage.run]
+parallel = true
+
+[tool.coverage.report]
+fail_under = 69
+omit = [
+    "py_src/fusion/_legacy/authentication.py",
+    "py_src/fusion/_legacy/__init__.py"
+]
+exclude_lines = [
+    "if typing.TYPE_CHECKING:",
+    "if TYPE_CHECKING:",
+]

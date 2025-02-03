@@ -19,12 +19,11 @@ from .attributes import Attribute, Attributes
 from .credentials import FusionCredentials
 from .dataflow import InputDataFlow, OutputDataFlow
 from .dataset import Dataset
+from .exceptions import APIResponseError
+from .fusion_filesystem import FusionHTTPFileSystem
 from .fusion_types import Types
 from .product import Product
 from .report import Report
-
-from .exceptions import APIResponseError
-from .fusion_filesystem import FusionHTTPFileSystem
 from .utils import (
     RECOGNIZED_FORMATS,
     cpu_count,

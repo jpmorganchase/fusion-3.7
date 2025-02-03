@@ -92,7 +92,7 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-addopts = "--cov fusion37 --html .reports/py/index.html --cov-report html:.reports/py/cov --cov-report term --random-order"
+addopts = "--cov fusion --html .reports/py/index.html --cov-report html:.reports/py/cov --cov-report term --random-order"
 minversion = "7.0"
 pythonpath = ["src", "py_tests"]
 testpaths = "py_tests"

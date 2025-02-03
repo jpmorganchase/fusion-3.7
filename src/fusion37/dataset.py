@@ -356,7 +356,10 @@ class Dataset(metaclass=CamelCaseMeta):
         resp = client.session.get(f"{client.root_url}catalogs/{catalog}/datasets")
         requests_raise_for_status(resp)
         list_datasets = resp.json()["resources"]
-        dict_ = [dict_ for dict_ in list_datasets if dict_["identifier"] == dataset][0]
+        matching_datasets = [dict_ for dict_ in list_datasets if dict_["identifier"] == dataset]
+        if not matching_datasets:
+            raise ValueError(f"Dataset with identifier '{dataset}' not found in catalog '{catalog}'.")
+        dict_ = matching_datasets[0]
         dataset_obj = self._from_dict(dict_)
         dataset_obj.client = client
 

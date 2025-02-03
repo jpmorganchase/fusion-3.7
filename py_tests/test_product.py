@@ -546,5 +546,16 @@ def test_copy_product(requests_mock: MagicMock, fusion_obj: Fusion) -> None:
     assert isinstance(resp, requests.Response)
     assert resp.status_code == status_code
 
-# Additional tests for various Product functionalities can be updated similarly
+def test_product_from_catalog_not_found(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    """Test retrieval of a Product from a catalog when the product is not found."""
+    catalog = "my_catalog"
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/products"
+
+    expected_data = {
+        "resources": [],
+    }
+    requests_mock.get(url, json=expected_data)
+
+    with pytest.raises(ValueError, match="Product with identifier 'TEST_PRODUCT' not found in catalog 'my_catalog'."):
+        Product(identifier="TEST_PRODUCT").from_catalog(client=fusion_obj, catalog=catalog)
 

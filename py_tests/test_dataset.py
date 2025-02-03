@@ -1029,4 +1029,13 @@ def test_dataset_case_switching() -> None:
     assert dataset_from_camel_dict.is_active == dataset_from_camel_dict.isActive
     assert dataset_from_camel_dict.application_id == dataset_from_camel_dict.applicationId
 
+def test_dataset_from_catalog_not_found(requests_mock: Mocker, fusion_obj: Fusion) -> None:
+    """Test Dataset.from_catalog method when dataset is not found."""
+    catalog = "my_catalog"
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets"
 
+    expected_data = {"resources": []}
+    requests_mock.get(url, json=expected_data)
+
+    with pytest.raises(ValueError, match="Dataset with identifier 'TEST_DATASET' not found in catalog 'my_catalog'."):
+        Dataset(identifier="TEST_DATASET").from_catalog(catalog=catalog, client=fusion_obj)

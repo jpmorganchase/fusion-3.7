@@ -1,3 +1,4 @@
+import io
 import json
 from pathlib import Path
 from typing import Any, Dict
@@ -8,6 +9,7 @@ import asynctest
 import fsspec
 import pytest
 from aiohttp import ClientResponse
+from pytest_mock import MockerFixture
 
 from fusion37.credentials import FusionCredentials
 from fusion37.fusion_filesystem import FusionHTTPFileSystem
@@ -180,3 +182,136 @@ def test_stream_single_file_exception(
     # Assertions to verify the behavior
     output_file.close.assert_called_once()
     assert results == (False, output_file.path, "Test exception")
+
+@pytest.mark.asyncio
+async def test_download_single_file_async(
+    mocker: MockerFixture,  # Add type annotation for mocker
+    example_creds_dict: Dict[str, Any], 
+    tmp_path: Path
+) -> None:
+    # Patching the function _run_coros_in_chunks with a mock
+    mock_run_coros_in_chunks = mocker.patch("fsspec.asyn._run_coros_in_chunks", new_callable=mocker.AsyncMock)
+    
+    mock_run_coros_in_chunks.return_value = [True, True, True]
+
+    url = "http://example.com/data"
+    output_file = MagicMock(spec=io.IOBase)
+    output_file.path = "./output_file_path/file.txt"
+    file_size = 20
+    chunk_size = 10
+    n_threads = 3
+
+    # Mock credentials file
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Create the FusionHTTPFileSystem instance
+    http_fs_instance = FusionHTTPFileSystem(credentials=creds)
+    http_fs_instance.set_session = mocker.AsyncMock(return_value=mocker.AsyncMock())
+    http_fs_instance._fetch_range = mocker.AsyncMock()
+
+    # Run the download function
+    result = await http_fs_instance._download_single_file_async(url, output_file, file_size, chunk_size, n_threads)
+
+    # Assertions for successful download
+    assert result == (True, output_file.path, None)
+    output_file.close.assert_called_once()
+
+    # Simulate an exception during the function call
+    mock_run_coros_in_chunks.return_value = [Exception("Test exception")]
+    result = await http_fs_instance._download_single_file_async(url, output_file, file_size, chunk_size, n_threads)
+
+    # Assertions for failed download
+    assert result == (False, output_file.path, "Test exception")
+    output_file.close.assert_called()
+
+@pytest.mark.asyncio
+async def test_fetch_range_exception(
+    mocker: MockerFixture,  # Add type annotation for mocker
+    example_creds_dict: Dict[str, Any], 
+    tmp_path: Path
+) -> None:
+    # Mock output file
+    output_file = MagicMock(spec=io.IOBase)
+    output_file.path = "./output_file_path/file.txt"
+    output_file.seek = MagicMock()
+    output_file.write = MagicMock()
+
+    # Mock the response with an exception on read
+    mock_response = mocker.MagicMock()
+    mock_response.raise_for_status = mocker.MagicMock()
+    mock_response.read = mocker.MagicMock(side_effect=Exception("Test exception"))
+    mock_response.status = 500
+    mock_response.__aenter__.return_value = mock_response
+    mock_response.__aexit__.return_value = None
+
+    # Mock the ClientSession
+    mock_client_session = mocker.MagicMock()
+    mock_client_session.get.return_value = mock_response
+    mocker.patch("aiohttp.ClientSession", return_value=mock_client_session)
+
+    # Mock credentials file
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Create the FusionHTTPFileSystem instance
+    http_fs_instance = FusionHTTPFileSystem(credentials=creds)
+    http_fs_instance.kwargs = {}
+
+    # Run the function (assuming you're testing a method that handles this exception)
+    # You should assert what the function would do in the case of an exception
+    await http_fs_instance._fetch_range(mock_client_session, "http://example.com/data", 0, 10, output_file)
+
+    # Assertions
+    output_file.seek.assert_not_called()
+    output_file.write.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_fetch_range_success(
+    mocker: MockerFixture,  # Add type annotation for mocker
+    example_creds_dict: Dict[str, Any], 
+    tmp_path: Path
+) -> None:
+    url = "http://example.com/data"
+    output_file = MagicMock(spec=io.IOBase)
+    output_file.path = "./output_file_path/file.txt"
+    output_file.seek = MagicMock()
+    output_file.write = MagicMock()
+    start = 0
+    end = 10
+
+    # Mocking the response
+    mock_response = mocker.MagicMock()
+    mock_response.raise_for_status = mocker.MagicMock()
+    mock_response.read = mocker.MagicMock(return_value=b"some data")
+    mock_response.status = 200
+    mock_response.__aenter__.return_value = mock_response
+    mock_response.__aexit__.return_value = None
+
+    # Mocking the session
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response
+    mocker.patch("aiohttp.ClientSession", return_value=mock_session)
+
+    # Mocking credentials file
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Creating the FusionHTTPFileSystem instance
+    http_fs_instance = FusionHTTPFileSystem(credentials=creds)
+    http_fs_instance.kwargs = {}
+
+    # Run the function
+    await http_fs_instance._fetch_range(mock_session, url, start, end, output_file)
+
+    # Assertions
+    output_file.seek.assert_called_once_with(0)
+    output_file.write.assert_called_once_with(b"some data")
+    mock_response.raise_for_status.assert_not_called()
+    mock_session.get.assert_called_once_with(url + f"?downloadRange=bytes={start}-{end-1}", **http_fs_instance.kwargs)

@@ -305,7 +305,10 @@ class Product(metaclass=CamelCaseMeta):
         resp = client.session.get(f"{client.root_url}catalogs/{catalog}/products")
         requests_raise_for_status(resp)
         list_products = resp.json()["resources"]
-        dict_ = [dict_ for dict_ in list_products if dict_["identifier"] == self.identifier][0]
+        filtered_products = [dict_ for dict_ in list_products if dict_["identifier"] == self.identifier]
+        if not filtered_products:
+            raise ValueError(f"Product with identifier '{self.identifier}' not found in catalog '{catalog}'.")
+        dict_ = filtered_products[0]
         product_obj = Product._from_dict(dict_)
         product_obj.client = client
 

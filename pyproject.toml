@@ -16,7 +16,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 packages = [
-    { include = "fusion37", from = "src" },
+    { include = "fusion", from = "src" },
     { include = "py_tests", format = "sdist" },
 ]
 

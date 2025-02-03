@@ -173,7 +173,7 @@ def mock_product_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
         },
         index=[0],
     )
-    with patch("fusion37.fusion.pd.read_csv", return_value=product_df) as mock:
+    with patch("fusion.fusion.pd.read_csv", return_value=product_df) as mock:
         yield mock
 
 
@@ -184,7 +184,7 @@ def mock_dataset_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
         {"title": ["Test Dataset"], "identifier": ["TEST_DATASET"], "category": ["Test"], "product": ["TEST_PRODUCT"]},
         index=[0],
     )
-    with patch("fusion37.fusion.pd.read_csv", return_value=dataset_df) as mock:
+    with patch("fusion.fusion.pd.read_csv", return_value=dataset_df) as mock:
         yield mock
 
 @pytest.fixture

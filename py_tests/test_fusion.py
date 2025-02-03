@@ -130,7 +130,7 @@ def test_date_parsing() -> None:
     assert _normalise_dt_param(dtm) == "2020-12-12"
 
 def test_is_url() -> None:
-    from fusion37.authentication import _is_url
+    from fusion.authentication import _is_url
 
     assert _is_url("https://www.google.com")
     assert _is_url("http://www.google.com/some/path?qp1=1&qp2=2")

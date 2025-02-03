@@ -1,6 +1,6 @@
 """Test fusion types.py."""
 
-from fusion37 import fusion_types
+from fusion import fusion_types
 
 
 def test_enum_class() -> None:

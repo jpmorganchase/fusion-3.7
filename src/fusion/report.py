@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, Optional
 
-from fusion37.dataset import Dataset
-from fusion37.utils import requests_raise_for_status
+from .dataset import Dataset
+from .utils import requests_raise_for_status
 
 if TYPE_CHECKING:
     import requests
 
-    from fusion37 import Fusion
+    from fusion import Fusion
 
 
 @dataclass

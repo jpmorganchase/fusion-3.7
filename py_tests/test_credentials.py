@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from fusion37.credentials import (
+from fusion.credentials import (
     AuthToken,
     CredentialError,
     FusionCredentials,

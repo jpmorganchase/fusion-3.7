@@ -11,8 +11,8 @@ import pytest
 from aiohttp import ClientResponse
 from pytest_mock import MockerFixture
 
-from fusion37.credentials import FusionCredentials
-from fusion37.fusion_filesystem import FusionHTTPFileSystem
+from fusion.credentials import FusionCredentials
+from fusion.fusion_filesystem import FusionHTTPFileSystem
 
 
 @pytest.fixture

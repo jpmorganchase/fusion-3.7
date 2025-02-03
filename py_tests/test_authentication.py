@@ -9,10 +9,10 @@ from unittest.mock import MagicMock, Mock, patch
 import fsspec
 import pytest
 
-from fusion37.authentication import FusionOAuthAdapter
-from fusion37.credentials import FusionCredentials
-from fusion37.exceptions import CredentialError
-from fusion37.utils import get_default_fs
+from fusion.authentication import FusionOAuthAdapter
+from fusion.credentials import FusionCredentials
+from fusion.exceptions import CredentialError
+from fusion.utils import get_default_fs
 
 from .conftest import change_dir
 

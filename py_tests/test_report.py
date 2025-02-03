@@ -4,8 +4,8 @@ import pytest
 import requests
 import requests_mock
 
-from fusion37.fusion import Fusion
-from fusion37.report import Report
+from fusion.fusion import Fusion
+from fusion.report import Report
 
 
 def test_report_class_object_representation() -> None:

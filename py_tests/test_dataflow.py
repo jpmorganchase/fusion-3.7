@@ -3,8 +3,8 @@
 import requests
 import requests_mock
 
-from fusion37.dataflow import InputDataFlow, OutputDataFlow
-from fusion37.fusion import Fusion
+from fusion.dataflow import InputDataFlow, OutputDataFlow
+from fusion.fusion import Fusion
 
 
 def test_inputdataflow_class_object_representation() -> None:

@@ -8,9 +8,9 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from fusion37.authentication import FusionOAuthAdapter
-from fusion37.credentials import FusionCredentials
-from fusion37.fusion import Fusion
+from fusion.authentication import FusionOAuthAdapter
+from fusion.credentials import FusionCredentials
+from fusion.fusion import Fusion
 
 PathLike = Union[str, Path]
 

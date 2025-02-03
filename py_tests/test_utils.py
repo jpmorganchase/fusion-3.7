@@ -12,10 +12,10 @@ import pandas as pd
 import pytest
 from pytest_mock import MockerFixture
 
-from fusion37 import Fusion
-from fusion37.authentication import FusionOAuthAdapter
-from fusion37.credentials import FusionCredentials
-from fusion37.utils import (
+from fusion import Fusion
+from fusion.authentication import FusionOAuthAdapter
+from fusion.credentials import FusionCredentials
+from fusion.utils import (
     _filename_to_distribution,
     _normalise_dt_param,
     convert_date_format,

@@ -9,7 +9,7 @@ from .utils import requests_raise_for_status
 if TYPE_CHECKING:
     import requests
 
-    from .fusion import Fusion
+    from fusion import Fusion
 
 
 @dataclass

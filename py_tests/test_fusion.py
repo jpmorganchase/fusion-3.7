@@ -12,10 +12,10 @@ import requests_mock
 from pandas.testing import assert_frame_equal
 from pytest_mock import MockerFixture
 
-from fusion37 import Fusion
-from fusion37.attributes import Attribute, Types
-from fusion37.credentials import FusionCredentials
-from fusion37.utils import _normalise_dt_param, distribution_to_url
+from fusion import Fusion
+from fusion.attributes import Attribute, Types
+from fusion.credentials import FusionCredentials
+from fusion.utils import _normalise_dt_param, distribution_to_url
 
 
 @pytest.fixture

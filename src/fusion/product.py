@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import pandas as pd
 
-from fusion37.utils import (
+from .utils import (
     CamelCaseMeta,
     _is_json,
     camel_to_snake,

@@ -9,8 +9,8 @@ import requests
 import requests_mock
 from requests_mock import Mocker
 
-from fusion37 import Fusion
-from fusion37.dataset import Dataset
+from fusion import Fusion
+from fusion.dataset import Dataset
 
 
 def test_dataset_class() -> None:

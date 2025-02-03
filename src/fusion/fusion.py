@@ -15,13 +15,13 @@ from joblib import Parallel, delayed
 from tabulate import tabulate
 from tqdm import tqdm
 
-from fusion37.attributes import Attribute, Attributes
-from fusion37.credentials import FusionCredentials
-from fusion37.dataflow import InputDataFlow, OutputDataFlow
-from fusion37.dataset import Dataset
-from fusion37.fusion_types import Types
-from fusion37.product import Product
-from fusion37.report import Report
+from .attributes import Attribute, Attributes
+from .credentials import FusionCredentials
+from .dataflow import InputDataFlow, OutputDataFlow
+from .dataset import Dataset
+from .fusion_types import Types
+from .product import Product
+from .report import Report
 
 from .exceptions import APIResponseError
 from .fusion_filesystem import FusionHTTPFileSystem

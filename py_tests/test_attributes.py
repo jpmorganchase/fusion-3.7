@@ -8,9 +8,9 @@ import pytest
 import requests
 import requests_mock
 
-from fusion37 import Fusion
-from fusion37.attributes import Attribute, Attributes
-from fusion37.fusion_types import Types
+from fusion import Fusion
+from fusion.attributes import Attribute, Attributes
+from fusion.fusion_types import Types
 
 
 def test_attribute_class() -> None:

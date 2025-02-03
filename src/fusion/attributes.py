@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import requests
 
-from fusion37.fusion_types import Types
-from fusion37.utils import (
+from .fusion_types import Types
+from .utils import (
     CamelCaseMeta,
     camel_to_snake,
     convert_date_format,
@@ -21,7 +21,7 @@ from fusion37.utils import (
 if TYPE_CHECKING:
     import requests
 
-    from fusion37.fusion import Fusion
+    from .fusion import Fusion
 
 
 @dataclass

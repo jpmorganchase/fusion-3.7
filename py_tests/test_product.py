@@ -9,8 +9,8 @@ import pytest
 import requests
 import requests_mock
 
-from fusion37 import Fusion
-from fusion37.product import Product
+from fusion import Fusion
+from fusion.product import Product
 
 
 def test_product_class() -> None:

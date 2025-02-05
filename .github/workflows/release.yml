@@ -60,12 +60,6 @@ jobs:
           git config --local user.name "github-actions[bot]"
         working-directory: main_repo
 
-      - name: Setup doc deploy git user
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-        working-directory: docs_repo
-
       - name: Build wheels and source tarball
         run: |
           poetry build
@@ -79,12 +73,12 @@ jobs:
           files: main_repo/dist/*.whl
           draft: false
           prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PYPI_PUBLISHING_TOKEN }}
 
       - name: publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PYPI_PUBLISHING_TOKEN }}
           skip_existing: true
           packages_dir: main_repo/dist/

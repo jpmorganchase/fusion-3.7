@@ -73,7 +73,7 @@ jobs:
           files: main_repo/dist/*.whl
           draft: false
           prerelease: false
-          token: ${{ secrets.PYPI_PUBLISHING_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

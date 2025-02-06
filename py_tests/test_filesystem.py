@@ -10,10 +10,12 @@ import fsspec
 import pytest
 from aiohttp import ClientResponse
 from pytest_mock import MockerFixture
+from typing_extensions import Literal
 
 from fusion.credentials import FusionCredentials
 from fusion.fusion_filesystem import FusionHTTPFileSystem
 
+AsyncMock = asynctest.CoroutineMock
 
 @pytest.fixture
 def http_fs_instance(credentials_examples: Path) -> FusionHTTPFileSystem:
@@ -315,3 +317,125 @@ async def test_fetch_range_success(
     output_file.write.assert_called_once_with(b"some data")
     mock_response.raise_for_status.assert_not_called()
     mock_session.get.assert_called_once_with(url + f"?downloadRange=bytes={start}-{end-1}", **http_fs_instance.kwargs)
+
+
+@pytest.mark.parametrize(
+    ("n_threads", "is_local_fs", "expected_method"),
+    [
+        (10, False, "stream_single_file"),
+        (10, True, "_download_single_file_async"),
+    ],
+)
+@mock.patch("fusion.utils.get_default_fs")
+@mock.patch("fsspec.asyn.sync")
+@mock.patch.object(FusionHTTPFileSystem, "stream_single_file", new_callable=AsyncMock)
+@mock.patch.object(FusionHTTPFileSystem, "_download_single_file_async", new_callable=AsyncMock)
+def test_get(  # noqa: PLR0913
+    mock_download_single_file_async:AsyncMock,
+    mock_stream_single_file: AsyncMock,
+    mock_sync: AsyncMock,
+    mock_get_default_fs: MagicMock,
+    n_threads: int,
+    is_local_fs: bool,
+    expected_method: str,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Arrange
+    fs = FusionHTTPFileSystem(credentials=creds)
+    rpath = "http://example.com/data"
+    chunk_size = 5 * 2**20
+    kwargs = {"n_threads": n_threads, "is_local_fs": is_local_fs, "headers": {"Content-Length": "100"}}
+
+    mock_file = AsyncMock(spec=fsspec.spec.AbstractBufferedFile)
+    mock_default_fs = MagicMock()
+    mock_default_fs.open.return_value = mock_file
+    mock_get_default_fs.return_value = mock_default_fs
+    mock_sync.side_effect = lambda _, func, *args, **kwargs: func(*args, **kwargs)
+    
+    # Act
+    _ = fs.get(rpath, mock_file, chunk_size, **kwargs)
+
+    # Assert
+    if expected_method == "stream_single_file":
+        mock_stream_single_file.assert_called_once_with(str(rpath), mock_file, block_size=chunk_size)
+        mock_download_single_file_async.assert_not_called()
+    else:
+        mock_download_single_file_async.assert_called_once_with(
+            str(rpath) + "/operationType/download", mock_file, 100, chunk_size, n_threads
+        )
+        mock_stream_single_file.assert_not_called()
+
+    mock_get_default_fs.return_value.open.assert_not_called()
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overwrite", "preserve_original_name", "expected_lpath"),
+    [
+        (True, False, "local_file.txt"),
+        (False, False, "local_file.txt"),
+        (True, True, "original_file.txt"),
+        (False, True, "original_file.txt"),
+    ],
+)
+@patch.object(FusionHTTPFileSystem, "get", return_value=("mocked_return", "mocked_lpath", "mocked_extra"))
+@patch.object(FusionHTTPFileSystem, "set_session", new_callable=asynctest.CoroutineMock)
+@patch("fsspec.AbstractFileSystem", autospec=True)
+@patch("aiohttp.ClientSession")
+def test_download(  # noqa: PLR0913
+    mock_client_session: MagicMock,
+    mock_fs_class: MagicMock,
+    mock_set_session: asynctest.CoroutineMock,
+    mock_get: MagicMock,
+    overwrite: bool,
+    preserve_original_name: bool,
+    expected_lpath: Literal["local_file.txt", "original_file.txt"],
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    credentials_file = tmp_path / "client_credentials.json"
+    with Path(credentials_file).open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    # Arrange
+    fs = FusionHTTPFileSystem(credentials=creds)
+    lfs = mock_fs_class.return_value
+    rpath = "http://example.com/data"
+    lpath = "local_file.txt"
+    chunk_size = 5 * 2**20
+
+    mock_session = asynctest.CoroutineMock()
+    mock_set_session.return_value = mock_session
+
+    # Use MagicMock and explicitly set async context manager for Python 3.7
+    mock_response = MagicMock()
+    mock_response.__aenter__ = asynctest.CoroutineMock(return_value=mock_response)
+    mock_response.__aexit__ = asynctest.CoroutineMock(return_value=None)
+    mock_response.raise_for_status = asynctest.CoroutineMock()
+    mock_response.headers = {"Content-Length": "100", "x-jpmc-file-name": "original_file.txt"}
+
+    mock_session.head.return_value = mock_response 
+
+    # Act
+    result = fs.download(lfs, rpath, lpath, chunk_size, overwrite, preserve_original_name)
+
+    # Assert
+    if overwrite:
+        assert result == ("mocked_return", "mocked_lpath", "mocked_extra")
+        mock_get.assert_called_once_with(
+            str(rpath),
+            lfs.open(expected_lpath, "wb"),
+            chunk_size=chunk_size,
+            headers={"Content-Length": "100", "x-jpmc-file-name": "original_file.txt"},
+            is_local_fs=False,
+        )
+    elif preserve_original_name:
+        assert result == (True, Path(expected_lpath), None)
+    else:
+        assert result == (True, lpath, None)

@@ -1150,7 +1150,41 @@ class Fusion:
             dataset: Union[str, List[str], None] = None,
             **kwargs: Any,
         ) -> Product:
-            """Instantiate a Product object with this client for metadata creation."""
+            """Instantiate a Product object with this client for metadata creation.
+
+            Args:
+                identifier (str): Product identifier.
+                title (str, optional): Product title. If not provided, defaults to identifier.
+                category (str | list[str] | None, optional): Category. Defaults to None.
+                short_abstract (str, optional): Short description. Defaults to "".
+                description (str, optional): Description. If not provided, defaults to identifier.
+                is_active (bool, optional): Boolean for Active status. Defaults to True.
+                is_restricted (bool | None, optional): Flag for restricted products. Defaults to None.
+                maintainer (str | list[str] | None, optional): Product maintainer. Defaults to None.
+                region (str | list[str] | None, optional): Product region. Defaults to None.
+                publisher (str | None, optional): Name of vendor that publishes the data. Defaults to None.
+                sub_category (str | list[str] | None, optional): Product sub-category. Defaults to None.
+                tag (str | list[str] | None, optional): Tags used for search purposes. Defaults to None.
+                delivery_channel (str | list[str], optional): Product delivery channel. Defaults to "API".
+                theme (str | None, optional): Product theme. Defaults to None.
+                release_date (str | None, optional): Product release date. Defaults to None.
+                language (str, optional): Product language. Defaults to "English".
+                status (str, optional): Product status. Defaults to "Available".
+                image (str, optional): Product image. Defaults to "".
+                logo (str, optional): Product logo. Defaults to "".
+                dataset (str | list[str] | None, optional): Product datasets. Defaults to None.
+
+            Returns:
+                Product: Fusion Product class instance.
+
+            Examples:
+                >>> fusion = Fusion()
+                >>> fusion.product(identifier="PRODUCT_1", title="Product")
+
+            Note:
+                See the product module for more information on functionalities of product objects.
+
+            """
             product_obj = Product(
                 identifier=identifier,
                 title=title,
@@ -1218,7 +1252,67 @@ class Fusion:
             application_id: Union[str, Dict[str, str], None] = None,
             **kwargs: Any,
         ) -> Dataset:
-            """Instantiate a Dataset object with this client for metadata creation."""
+            """Instantiate a Dataset object with this client for metadata creation.
+
+            Args:
+                identifier (str): Dataset identifier.
+                title (str, optional): Dataset title. If not provided, defaults to identifier.
+                category (str | list[str] | None, optional): A category or list of categories for the dataset.
+                    Defaults to None.
+                description (str, optional): Dataset description. If not provided, defaults to identifier.
+                frequency (str, optional): The frequency of the dataset. Defaults to "Once".
+                is_internal_only_dataset (bool, optional): Flag for internal datasets. Defaults to False.
+                is_third_party_data (bool, optional): Flag for third party data. Defaults to True.
+                is_restricted (bool | None, optional): Flag for restricted datasets. Defaults to None.
+                is_raw_data (bool, optional): Flag for raw datasets. Defaults to True.
+                maintainer (str | None, optional): Dataset maintainer. Defaults to "J.P. Morgan Fusion".
+                source (str | list[str] | None, optional): Name of data vendor which provided the data.
+                    Defaults to None.
+                region (str | list[str] | None, optional): Region. Defaults to None.
+                publisher (str, optional): Name of vendor that publishes the data. Defaults to "J.P. Morgan".
+                product (str | list[str] | None, optional): Product to associate dataset with. Defaults to None.
+                sub_category (str | list[str] | None, optional): Sub-category. Defaults to None.
+                tags (str | list[str] | None, optional): Tags used for search purposes. Defaults to None.
+                created_date (str | None, optional): Created date. Defaults to None.
+                modified_date (str | None, optional): Modified date. Defaults to None.
+                delivery_channel (str | list[str], optional): Delivery channel. Defaults to "API".
+                language (str, optional): Language. Defaults to "English".
+                status (str, optional): Status. Defaults to "Available".
+                type_ (str | None, optional): Dataset type. Defaults to "Source".
+                container_type (str | None, optional): Container type. Defaults to "Snapshot-Full".
+                snowflake (str | None, optional): Snowflake account connection. Defaults to None.
+                complexity (str | None, optional): Complexity. Defaults to None.
+                is_immutable (bool | None, optional): Flag for immutable datasets. Defaults to None.
+                is_mnpi (bool | None, optional): is_mnpi. Defaults to None.
+                is_pci (bool | None, optional): is_pci. Defaults to None.
+                is_pii (bool | None, optional): is_pii. Defaults to None.
+                is_client (bool | None, optional): is_client. Defaults to None.
+                is_public (bool | None, optional): is_public. Defaults to None.
+                is_internal (bool | None, optional): is_internal. Defaults to None.
+                is_confidential (bool | None, optional): is_confidential. Defaults to None.
+                is_highly_confidential (bool | None, optional): is_highly_confidential. Defaults to None.
+                is_active (bool | None, optional): is_active. Defaults to None.
+                owners (list[str] | None, optional): The owners of the dataset. Defaults to None.
+                application_id (Optional[Union[str, Dict[str, str]]], optional): The application ID of the 
+                    dataset. Defaults to None. If a string is provided, it will be converted to a dictionary with 'id' 
+                    and 'type' keys, type defaults to "Application (SEAL)". If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+
+            Returns:
+                Dataset: Fusion Dataset class.
+
+            Examples:
+                >>> from fusion import Fusion
+                >>> fusion = Fusion()
+                >>> dataset = fusion.dataset(identifier="DATASET_1")
+
+            Note:
+                See the dataset module for more information on functionalities of dataset objects.
+
+            """
             dataset_obj = Dataset(
                 identifier=identifier,
                 title=title,
@@ -1287,6 +1381,49 @@ class Fusion:
             application_id: Optional[Union[str, dict]] = None,
             **kwargs: Any,
         ) -> Attribute:
+        """Instantiate an Attribute object with this client for metadata creation.
+
+        Args:
+            identifier (str): The unique identifier for the attribute.
+            index (int): Attribute index.
+            data_type (str | Types, optional): Datatype of attribute. Defaults to "String".
+            title (str, optional): Attribute title. If not provided, defaults to identifier.
+            description (str, optional): Attribute description. If not provided, defaults to identifier.
+            is_dataset_key (bool, optional): Flag for primary keys. Defaults to False.
+            source (str | None, optional): Name of data vendor which provided the data. Defaults to None.
+            source_field_id (str | None, optional): Original identifier of attribute, if attribute has been renamed.
+                If not provided, defaults to identifier.
+            is_internal_dataset_key (bool | None, optional): Flag for internal primary keys. Defaults to None.
+            is_externally_visible (bool | None, optional): Flag for externally visible attributes. Defaults to True.
+            unit (Any | None, optional): Unit of attribute. Defaults to None.
+            multiplier (float, optional): Multiplier for unit. Defaults to 1.0.
+            is_propagation_eligible (bool | None, optional): Flag for propagation eligibility. Defaults to None.
+            is_metric (bool | None, optional): Flag for attributes that are metrics. Defaults to None.
+            available_from (str | None, optional): Date from which the attribute is available. Defaults to None.
+            deprecated_from (str | None, optional): Date from which the attribute is deprecated. Defaults to None.
+            term (str, optional): Term. Defaults to "bizterm1".
+            dataset (int | None, optional): Dataset. Defaults to None.
+            attribute_type (str | None, optional): Attribute type. Defaults to None.
+            application_id (Optional[Union[str, Dict[str, str]]], optional): The application ID of the 
+                    dataset. Defaults to None. If a string is provided, it will be converted to a dictionary with 'id' 
+                    and 'type' keys, type defaults to "Application (SEAL)". If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+
+        Returns:
+            Attribute: Fusion Attribute class.
+
+        Examples:
+            >>> from fusion import Fusion
+            >>> fusion = Fusion()
+            >>> attr = fusion.attribute(identifier="attr1", index=0)
+
+        Note:
+            See the attributes module for more information on functionalities of attribute objects.
+
+        """
         data_type = Types[str(data_type).strip().rsplit(".", maxsplit=1)[-1].title()]
         attribute_obj = Attribute(
             identifier=identifier,
@@ -1462,8 +1599,13 @@ class Fusion:
                 is_highly_confidential (Optional[bool], optional): is_highly_confidential. Defaults to None.
                 is_active (Optional[bool], optional): is_active. Defaults to None.
                 owners (Optional[List[str]], optional): The owners of the dataset. Defaults to None.
-                application_id (Union[str, Dict[str, str], None], optional): The application ID of the dataset.
-                    Defaults to None.
+                application_id (Optional[Union[str, Dict[str, str]]], optional): The application ID of the 
+                    dataset. Defaults to None. If a string is provided, it will be converted to a dictionary with 'id' 
+                    and 'type' keys, type defaults to "Application (SEAL)". If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
                 report (Optional[Dict[str, str]], optional): The report metadata. Specifies the tier of the report.
                     Required for registered reports to the catalog.
 
@@ -1563,10 +1705,78 @@ class Fusion:
         owners: Optional[List[str]] = None,
         application_id: Union[str, Dict[str, str], None] = None,
         producer_application_id: Optional[Dict[str, str]] = None,
-        consumer_application_id: Union[List[Dict[str, str]], Dict[str, str], None] = None,
         flow_details: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> InputDataFlow:
+        """Instantiate an Input Dataflow object with this client for metadata creation.
+
+        Args:
+            identifier (str): Dataset identifier.
+            title (str, optional): Dataset title. If not provided, defaults to identifier.
+            category (str | list[str] | None, optional): A category or list of categories for the dataset.
+            Defaults to None.
+            description (str, optional): Dataset description. If not provided, defaults to identifier.
+            frequency (str, optional): The frequency of the dataset. Defaults to "Once".
+            is_internal_only_dataset (bool, optional): Flag for internal datasets. Defaults to False.
+            is_third_party_data (bool, optional): Flag for third party data. Defaults to True.
+            is_restricted (bool | None, optional): Flag for restricted datasets. Defaults to None.
+            is_raw_data (bool, optional): Flag for raw datasets. Defaults to True.
+            maintainer (str | None, optional): Dataset maintainer. Defaults to "J.P. Morgan Fusion".
+            source (str | list[str] | None, optional): Name of data vendor which provided the data. Defaults to None.
+            region (str | list[str] | None, optional): Region. Defaults to None.
+            publisher (str, optional): Name of vendor that publishes the data. Defaults to "J.P. Morgan".
+            product (str | list[str] | None, optional): Product to associate dataset with. Defaults to None.
+            sub_category (str | list[str] | None, optional): Sub-category. Defaults to None.
+            tags (str | list[str] | None, optional): Tags used for search purposes. Defaults to None.
+            created_date (str | None, optional): Created date. Defaults to None.
+            modified_date (str | None, optional): Modified date. Defaults to None.
+            delivery_channel (str | list[str], optional): Delivery channel. Defaults to "API".
+            language (str, optional): Language. Defaults to "English".
+            status (str, optional): Status. Defaults to "Available".
+            type_ (str | None, optional): Dataset type. Defaults to "Flow".
+            container_type (str | None, optional): Container type. Defaults to "Snapshot-Full".
+            snowflake (str | None, optional): Snowflake account connection. Defaults to None.
+            complexity (str | None, optional): Complexity. Defaults to None.
+            is_immutable (bool | None, optional): Flag for immutable datasets. Defaults to None.
+            is_mnpi (bool | None, optional): is_mnpi. Defaults to None.
+            is_pci (bool | None, optional): is_pci. Defaults to None.
+            is_pii (bool | None, optional): is_pii. Defaults to None.
+            is_client (bool | None, optional): is_client. Defaults to None.
+            is_public (bool | None, optional): is_public. Defaults to None.
+            is_internal (bool | None, optional): is_internal. Defaults to None.
+            is_confidential (bool | None, optional): is_confidential. Defaults to None.
+            is_highly_confidential (bool | None, optional): is_highly_confidential. Defaults to None.
+            is_active (bool | None, optional): is_active. Defaults to None.
+            owners (list[str] | None, optional): The owners of the dataset. Defaults to None.
+            application_id (Optional[Union[str, Dict[str, str]]], optional): The application ID of the 
+                    dataset. Defaults to None. If a string is provided, it will be converted to a dictionary with 'id' 
+                    and 'type' keys, type defaults to "Application (SEAL)". If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+                    The application_id is copied to the consumer_application_id.
+            producer_application_id (dict[str, str] | None, optional): The producer application ID (upstream application
+                producing the flow). If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+            flow_details (dict[str, str] | None, optional): The flow details. Specifies input versus output flow.
+                Defaults to {"flowDirection": "Input"}.
+
+        Returns:
+            Dataset: Fusion InputDataFlow class.
+
+        Examples:
+            >>> from fusion import Fusion
+            >>> fusion = Fusion()
+            >>> dataset = fusion.input_dataflow(identifier="MY_DATAFLOW")
+
+        Note:
+            See the dataset module for more information on functionalities of input dataflow objects.
+
+        """
         flow_details = {"flowDirection": "Input"} if flow_details is None else flow_details
         dataflow_obj = InputDataFlow(
             identifier=identifier,
@@ -1606,8 +1816,7 @@ class Fusion:
             is_active=is_active,
             owners=owners,
             application_id=application_id,
-            producer_application_id=producer_application_id,
-            consumer_application_id=consumer_application_id,
+            producer_application_id=producer_application_id,            
             flow_details=flow_details,
             **kwargs,
         )
@@ -1658,6 +1867,80 @@ class Fusion:
         flow_details: Optional[Dict[str, str]] = None,
         **kwargs: Any,
     ) -> OutputDataFlow:
+        """Instantiate an Output Dataflow object with this client for metadata creation.
+
+        Args:
+            identifier (str): Dataset identifier.
+            title (str, optional): Dataset title. If not provided, defaults to identifier.
+            category (str | list[str] | None, optional): A category or list of categories for the dataset.
+            Defaults to None.
+            description (str, optional): Dataset description. If not provided, defaults to identifier.
+            frequency (str, optional): The frequency of the dataset. Defaults to "Once".
+            is_internal_only_dataset (bool, optional): Flag for internal datasets. Defaults to False.
+            is_third_party_data (bool, optional): Flag for third party data. Defaults to True.
+            is_restricted (bool | None, optional): Flag for restricted datasets. Defaults to None.
+            is_raw_data (bool, optional): Flag for raw datasets. Defaults to True.
+            maintainer (str | None, optional): Dataset maintainer. Defaults to "J.P. Morgan Fusion".
+            source (str | list[str] | None, optional): Name of data vendor which provided the data. Defaults to None.
+            region (str | list[str] | None, optional): Region. Defaults to None.
+            publisher (str, optional): Name of vendor that publishes the data. Defaults to "J.P. Morgan".
+            product (str | list[str] | None, optional): Product to associate dataset with. Defaults to None.
+            sub_category (str | list[str] | None, optional): Sub-category. Defaults to None.
+            tags (str | list[str] | None, optional): Tags used for search purposes. Defaults to None.
+            created_date (str | None, optional): Created date. Defaults to None.
+            modified_date (str | None, optional): Modified date. Defaults to None.
+            delivery_channel (str | list[str], optional): Delivery channel. Defaults to "API".
+            language (str, optional): Language. Defaults to "English".
+            status (str, optional): Status. Defaults to "Available".
+            type_ (str | None, optional): Dataset type. Defaults to "Flow".
+            container_type (str | None, optional): Container type. Defaults to "Snapshot-Full".
+            snowflake (str | None, optional): Snowflake account connection. Defaults to None.
+            complexity (str | None, optional): Complexity. Defaults to None.
+            is_immutable (bool | None, optional): Flag for immutable datasets. Defaults to None.
+            is_mnpi (bool | None, optional): is_mnpi. Defaults to None.
+            is_pci (bool | None, optional): is_pci. Defaults to None.
+            is_pii (bool | None, optional): is_pii. Defaults to None.
+            is_client (bool | None, optional): is_client. Defaults to None.
+            is_public (bool | None, optional): is_public. Defaults to None.
+            is_internal (bool | None, optional): is_internal. Defaults to None.
+            is_confidential (bool | None, optional): is_confidential. Defaults to None.
+            is_highly_confidential (bool | None, optional): is_highly_confidential. Defaults to None.
+            is_active (bool | None, optional): is_active. Defaults to None.
+            owners (list[str] | None, optional): The owners of the dataset. Defaults to None.
+            application_id (Optional[Union[str, Dict[str, str]]], optional): The application ID of the 
+                    dataset. Defaults to None. If a string is provided, it will be converted to a dictionary with 'id' 
+                    and 'type' keys, type defaults to "Application (SEAL)". If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+            producer_application_id (dict[str, str] | None, optional): The producer application ID (upstream application
+                producing the flow). Defaults to None.If a dictionary is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+            consumer_application_id (list[dict[str, str]] | dict[str, str] | None, optional): The consumer application
+                ID (downstream application, consuming the flow). Defaults to None. If a dictionary or List of Dict is provided, it must 
+                    contain keys 'id' and 'type', where 'type' should be one of the values                 
+                        - "Application (SEAL)"
+                        - "Intelligent Solution"
+                        - "User Tool"
+            flow_details (dict[str, str] | None, optional): The flow details. Specifies input versus output flow.
+                Defaults to {"flowDirection": "Output"}.
+
+        Returns:
+            Dataset: Fusion OutputDataFlow class.
+
+        Examples:
+            >>> from fusion import Fusion
+            >>> fusion = Fusion()
+            >>> dataset = fusion.output_dataflow(identifier="MY_DATAFLOW")
+
+        Note:
+            See the dataset module for more information on functionalities of output dataflow objects.
+
+        """
         flow_details = {"flowDirection": "Output"} if flow_details is None else flow_details
         dataflow_obj = OutputDataFlow(
             identifier=identifier,

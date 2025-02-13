@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     import requests
 
     from fusion import Fusion
+from .utils import process_application_id
 
 
 @dataclass
@@ -25,7 +26,7 @@ class DataFlow(Dataset):
         type_ (Optional[str]): The type of dataset. Defaults to "Flow".
     """
     producer_application_id: Optional[Dict[str, str]] = None
-    consumer_application_id: Optional[Union[List[Dict[str, str]], Dict[str, str]]] = None
+    consumer_application_id: Optional[Union[List[Dict[str, str]], Dict[str, str]]] = None   
     flow_details: Optional[Dict[str, str]] = None
     type_: Optional[str] = "Flow"
 
@@ -33,6 +34,15 @@ class DataFlow(Dataset):
         """Format the Data Flow object."""
         if isinstance(self.consumer_application_id, dict):
             self.consumer_application_id = [self.consumer_application_id]
+        if self.consumer_application_id:
+            self.consumer_application_id = [
+                process_application_id(app_id, "consumer_application_id")
+                for app_id in self.consumer_application_id
+            ]
+        if self.producer_application_id:
+            self.producer_application_id = process_application_id(
+                self.producer_application_id, "producer_application_id"
+            )
         super().__post_init__()
 
     def add_registered_attribute(
@@ -75,6 +85,16 @@ class DataFlow(Dataset):
 class InputDataFlow(DataFlow):
     """InputDataFlow class for maintaining input data flow metadata."""
     flow_details: Optional[Dict[str, str]] = field(default_factory=lambda: {"flowDirection": "Input"})
+
+    def __post_init__(self) -> None:
+        """Ensure consumer_application_id is assigned from application_id."""
+        if self.application_id:
+            self.consumer_application_id = (
+                [{"id": str(self.application_id), "type": "Application (SEAL)"}]
+                if isinstance(self.application_id, str)
+                else [self.application_id]                
+            )
+        super().__post_init__()
 
     def __repr__(self) -> str:
         """Return an object representation of the InputDataFlow object.

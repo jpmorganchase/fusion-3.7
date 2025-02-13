@@ -27,6 +27,7 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 from urllib3.util.retry import Retry
 
+from .application_types import ApplicationType
 from .authentication import FusionAiohttpSession, FusionOAuthAdapter
 
 if TYPE_CHECKING:
@@ -664,3 +665,43 @@ def requests_raise_for_status(response: requests.Response) -> None:
             response.reason = real_reason
         finally:
             response.raise_for_status()
+
+def process_application_id(
+    application_id: Union[str, Dict[str, str], None], 
+    param_name: str = "application_id"
+) -> Dict[str, str]:
+    """
+        Processes the application_id and converts it into a standardized dictionary format.
+
+        Parameters:
+            application_id (Union[str, Dict[str, str], None]): The application ID of the dataset.
+                - If a string is provided, it will be converted to a dictionary with 'id' and a default 'type' of SEAL.
+                - If a dictionary is provided, it must contain keys 'id' and 'type', where 'type' must be a valid 
+                  ApplicationType value.
+
+        Returns:
+            Dict[str, str]: A validated application_id dictionary with 'id' and 'type' keys.
+
+        Raises:
+            ValueError: If the provided dictionary does not contain the required keys or has an invalid type.
+        """
+    if isinstance(application_id, str):
+        return {"id": str(application_id), "type": ApplicationType.SEAL.value}
+
+    if isinstance(application_id, dict):
+        required_keys = {"id", "type"}
+
+        # Validate required keys are present
+        if not required_keys.issubset(application_id.keys()):
+            raise ValueError(f"{param_name} must contain keys: {required_keys}")
+
+        # Validate type against ApplicationType enum
+        if application_id["type"] not in ApplicationType._value2member_map_:
+            valid_types = [e.value for e in ApplicationType]
+            raise ValueError(
+                f"Invalid {param_name} type: {application_id['type']}. "
+                f"Must be one of {valid_types}"
+            )
+
+        return {"id": str(application_id["id"]), "type": application_id["type"]}
+

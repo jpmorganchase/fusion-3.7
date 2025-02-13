@@ -1,6 +1,7 @@
 """Test case for dataset module."""
 
 import json
+import re
 from typing import Any, Generator
 
 import pandas as pd
@@ -115,7 +116,7 @@ def test_dataset_class_application_id_dict() -> None:
         identifier="Test Dataset",
         category="Test",
         product="TEST_PRODUCT",
-        application_id={"id": "12345", "type": "Alternative (TYPE)"},
+        application_id={"id": "12345", "type": "Intelligent Solution"},
     )
 
     assert str(test_dataset)
@@ -155,7 +156,7 @@ def test_dataset_class_application_id_dict() -> None:
     assert test_dataset.is_confidential is None
     assert test_dataset.is_highly_confidential is None
     assert test_dataset.is_active is None
-    assert test_dataset.application_id == {"id": "12345", "type": "Alternative (TYPE)"}
+    assert test_dataset.application_id == {"id": "12345", "type": "Intelligent Solution"}
 
 
 def test_dataset_client_value_error() -> None:
@@ -1039,3 +1040,33 @@ def test_dataset_from_catalog_not_found(requests_mock: Mocker, fusion_obj: Fusio
 
     with pytest.raises(ValueError, match="Dataset with identifier 'TEST_DATASET' not found in catalog 'my_catalog'."):
         Dataset(identifier="TEST_DATASET").from_catalog(catalog=catalog, client=fusion_obj)
+
+def test_dataset_class_application_id_invalid_dict() -> None:
+    """Test Dataset with application_id missing required keys."""
+    with pytest.raises(
+        ValueError,
+        match=re.escape("application_id must contain keys: {'id', 'type'}")
+        + "|"
+        + re.escape("application_id must contain keys: {'type', 'id'}"),
+    ):
+        Dataset(identifier="Test Dataset", application_id={"id": "12345"})
+
+def test_dataset_class_application_id_invalid_type() -> None:
+    """Test Dataset with application_id having an invalid type."""
+    with pytest.raises(
+        ValueError,
+        match=re.escape("application_id must contain keys: {'id', 'type'}")
+        + "|"
+        + re.escape("application_id must contain keys: {'type', 'id'}"),
+    ):
+        Dataset(identifier="Test Dataset", application_id={"id": "12345"})
+
+def test_dataset_class_application_id_non_string_id() -> None:
+    """Test Dataset with application_id where 'id' is not a string."""
+    test_dataset = Dataset(
+        identifier="Test Dataset",
+        application_id={"id": 98765, "type": "User Tool"},
+    )
+    assert test_dataset.application_id["id"] == "98765"
+    assert test_dataset.application_id["type"] == "User Tool"
+

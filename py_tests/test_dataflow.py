@@ -84,9 +84,9 @@ def test_inputdataflow_class_consumer_application_id_invalid_dict() -> None:
     """Test DataFlow with consumer_application_id missing required keys."""
     with pytest.raises(
         ValueError,
-        match=re.escape("consumer_application_id must contain keys: {'id', 'type'}")
+        match=re.escape("application_id must contain keys: {'id', 'type'}")
         + "|"
-        + re.escape("consumer_application_id must contain keys: {'type', 'id'}"),
+        + re.escape("application_id must contain keys: {'type', 'id'}"),
     ):
         InputDataFlow(identifier="Test DataFlow", application_id={"id": "12345"})
 
@@ -95,9 +95,9 @@ def test_inputdataflow_consumer_application_id_invalid_type() -> None:
     """Test DataFlow with consumer_application_id having an invalid type."""
     with pytest.raises(
         ValueError,
-        match=re.escape("consumer_application_id must contain keys: {'id', 'type'}")
+        match=re.escape("application_id must contain keys: {'id', 'type'}")
         + "|"
-        + re.escape("consumer_application_id must contain keys: {'type', 'id'}"),
+        + re.escape("application_id must contain keys: {'type', 'id'}"),
     ):
         InputDataFlow(identifier="Test DataFlow", application_id={"id": "12345"})
 

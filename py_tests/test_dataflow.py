@@ -74,11 +74,9 @@ def test_outputdataflow_producer_application_id_invalid_type() -> None:
     """Test DataFlow with producer_application_id having an invalid type."""
     with pytest.raises(
         ValueError,
-        match=re.escape("producer_application_id must contain keys: {'id', 'type'}")
-        + "|"
-        + re.escape("producer_application_id must contain keys: {'type', 'id'}"),
+        match=re.escape("Invalid producer_application_id type: Invalid. Must be one of ['Application (SEAL)', 'Intelligent Solution', 'User Tool']"),
     ):
-        OutputDataFlow(identifier="Test DataFlow", producer_application_id={"id": "12345"})
+        OutputDataFlow(identifier="Test DataFlow", producer_application_id={"id": "12345", "type": "Invalid"})
 
 def test_inputdataflow_class_consumer_application_id_invalid_dict() -> None:
     """Test DataFlow with consumer_application_id missing required keys."""
@@ -95,11 +93,9 @@ def test_inputdataflow_consumer_application_id_invalid_type() -> None:
     """Test DataFlow with consumer_application_id having an invalid type."""
     with pytest.raises(
         ValueError,
-        match=re.escape("application_id must contain keys: {'id', 'type'}")
-        + "|"
-        + re.escape("application_id must contain keys: {'type', 'id'}"),
+        match=re.escape("Invalid application_id type: Invalid. Must be one of ['Application (SEAL)', 'Intelligent Solution', 'User Tool']"),
     ):
-        InputDataFlow(identifier="Test DataFlow", application_id={"id": "12345"})
+        InputDataFlow(identifier="Test DataFlow", application_id={"id": "12345", "type": "Invalid"})
 
 
 def test_dataflow_consumer_application_id_non_string_id() -> None:

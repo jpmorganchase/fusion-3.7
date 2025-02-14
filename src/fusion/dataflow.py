@@ -26,7 +26,7 @@ class DataFlow(Dataset):
         type_ (Optional[str]): The type of dataset. Defaults to "Flow".
     """
     producer_application_id: Optional[Dict[str, str]] = None
-    consumer_application_id: Optional[Union[List[Dict[str, str]], Dict[str, str]]] = None   
+    consumer_application_id: Optional[Union[List[Dict[str, str]], Dict[str, str]]] = None
     flow_details: Optional[Dict[str, str]] = None
     type_: Optional[str] = "Flow"
 

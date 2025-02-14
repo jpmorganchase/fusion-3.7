@@ -1923,7 +1923,7 @@ class Fusion:
             consumer_application_id (
                 list[dict[str, str]] | dict[str, str] | None, optional
             ): The consumer application ID (downstream application, consuming the flow). Defaults to None. 
-               If a dictionary or List of Dict is provided, it must 
+               If a dictionary or List of Dict is provided, dict must 
                     contain keys 'id' and 'type', where 'type' should be one of the values                 
                         - "Application (SEAL)"
                         - "Intelligent Solution"

@@ -669,7 +669,7 @@ def requests_raise_for_status(response: requests.Response) -> None:
 def process_application_id(
     application_id: Union[str, Dict[str, str], None], 
     param_name: str = "application_id"
-) -> Dict[str, str]:
+) -> Optional[Dict[str, str]]:
     """
         Processes the application_id and converts it into a standardized dictionary format.
 
@@ -680,7 +680,7 @@ def process_application_id(
                   ApplicationType value.
 
         Returns:
-            Dict[str, str]: A validated application_id dictionary with 'id' and 'type' keys.
+            Optional[Dict[str, str]]: A validated application_id dictionary with 'id' and 'type' keys, or None.
 
         Raises:
             ValueError: If the provided dictionary does not contain the required keys or has an invalid type.
@@ -704,4 +704,4 @@ def process_application_id(
             )
 
         return {"id": str(application_id["id"]), "type": application_id["type"]}
-
+    return application_id

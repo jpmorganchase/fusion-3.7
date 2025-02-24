@@ -299,7 +299,6 @@ class FusionEmbeddingsConnection(Connection):  # type: ignore
         }
         send_kwargs.update(settings)
         try:
-            self.metrics.request_start()
             response = self.session.send(prepared_request, **send_kwargs)
             duration = time.time() - start
             raw_data = response.content.decode("utf-8", "surrogatepass")
@@ -319,8 +318,6 @@ class FusionEmbeddingsConnection(Connection):  # type: ignore
             if isinstance(e, requests.Timeout):
                 raise ConnectionTimeout("TIMEOUT", str(e), e) from e
             raise OpenSearchConnectionError("N/A", str(e), e) from e
-        finally:
-            self.metrics.request_end()
 
         # raise warnings if any from the 'Warnings' header.
         warnings_headers = (response.headers["warning"],) if "warning" in response.headers else ()

@@ -26,6 +26,8 @@ from .product import Product
 from .report import Report
 from .utils import (
     RECOGNIZED_FORMATS,
+    _format_full_index_response,
+    _format_summary_index_response,
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
@@ -43,6 +45,7 @@ from .utils import (
 if TYPE_CHECKING:
     import fsspec
     import requests
+    from opensearchpy import OpenSearch
 
 
 logger = logging.getLogger(__name__)
@@ -1834,3 +1837,53 @@ class Fusion:
                 If in_background is set to False then pandas DataFrame is output upon keyboard termination.
         """
         raise NotImplementedError("Method not implemented")
+    
+    def list_indexes(
+        self,
+        knowledge_base: str,
+        catalog: Optional[str] = None,
+        show_details: Optional[bool] = False,
+    ) -> pd.DataFrame:
+        """List the indexes in a knowledge base.
+
+        Args:
+            knowledge_base (str): Knowledge base (dataset) identifier.
+            catalog (Optional[str], optional): A catalog identifier. Defaults to 'common'.
+            show_details (Optional[bool], optional): If True then show detailed information. Defaults to False.
+
+        Returns:
+            pd.DataFrame: a dataframe with a column for each index.
+
+        """
+        catalog = self._use_catalog(catalog)
+        url = f"{self.root_url}dataspaces/{catalog}/datasets/{knowledge_base}/indexes/"
+        response = self.session.get(url)
+        requests_raise_for_status(response)
+        if show_details:
+            return _format_full_index_response(response)
+        else:
+            return _format_summary_index_response(response)
+
+    def get_fusion_vector_store_client(self, knowledge_base: str, catalog: Optional[str] = None) -> OpenSearch:
+        """Returns Fusion Embeddings Search client.
+
+        Args:
+            knowledge_base (str): Knowledge base (dataset) identifier.
+            catalog (Optional[str], optional): A catalog identifier. Defaults to 'common'.
+
+        Returns:
+            OpenSearch: Fusion Embeddings Search client.
+
+        """
+        from opensearchpy import OpenSearch
+
+        from fusion.embeddings import FusionEmbeddingsConnection
+
+        catalog = self._use_catalog(catalog)
+        return OpenSearch(
+            connection_class=FusionEmbeddingsConnection,
+            catalog=catalog,
+            knowledge_base=knowledge_base,
+            root_url=self.root_url,
+            credentials=self.credentials,
+        )

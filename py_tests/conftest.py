@@ -187,6 +187,47 @@ def mock_dataset_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
     with patch("fusion.fusion.pd.read_csv", return_value=dataset_df) as mock:
         yield mock
 
+
+@pytest.fixture
+def mock_attributes_pd_to_csv() -> Generator[pd.DataFrame, Any, None]:
+    """Mock the pd.to_csv function."""
+    with patch("fusion.fusion.pd.DataFrame.to_csv") as mock:
+        yield mock
+
+@pytest.fixture
+def mock_attributes_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
+    """Mock the pd.read_csv function."""
+    attributes_df = pd.DataFrame(
+    {
+        "applicationId": [""],
+        "attributeType": [""],
+        "availableFrom": [""],
+        "dataType": ["String"],
+        "dataset": [""],
+        "deprecatedFrom": [""],
+        "description": ["Example Attribute"],
+        "identifier": ["example_attribute"],
+        "index": [0],
+        "isCriticalDataElement": [""],
+        "isDatasetKey": [False],
+        "isExternallyVisible": [True],
+        "isInternalDatasetKey": [""],
+        "isMetric": [""],
+        "isPropagationEligible": [""],
+        "multiplier": [1.0],
+        "publisher": [""],
+        "source": [""],
+        "sourceFieldId": ["example_attribute"],
+        "term": ["bizterm1"],
+        "title": ["Example Attribute"],
+        "unit": [""]
+    },
+    index=[0]
+)
+    with patch("fusion.fusion.pd.read_csv", return_value=attributes_df) as mock:
+        yield mock
+
+
 @pytest.fixture
 def data_table_as_csv(data_table: pd.DataFrame) -> str:
     # Write the DataFrame to a CSV string

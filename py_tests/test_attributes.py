@@ -1,7 +1,7 @@
 """Test case for attributes module."""
 
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Generator, cast
 
 import pandas as pd
 import pytest
@@ -754,7 +754,10 @@ def test_attributes_to_dataframe() -> None:
     assert test_df["dataset"].iloc[0] is None
     assert test_df["attributeType"].iloc[0] is None
 
-def test_attributes_to_dataframe_empty_csv() -> None:
+def test_attributes_to_dataframe_empty_csv(
+    mock_attributes_pd_to_csv: Generator[pd.DataFrame, Any, None],
+    mock_attributes_pd_read_csv: Generator[pd.DataFrame, Any, None],
+) -> None:
     """Test attributes class to_dataframe method."""
     test_attributes = Attributes([])
     test_df = test_attributes.to_dataframe()

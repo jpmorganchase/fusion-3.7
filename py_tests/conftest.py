@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Generator, Union
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -199,31 +200,39 @@ def mock_attributes_pd_read_csv() -> Generator[pd.DataFrame, Any, None]:
     """Mock the pd.read_csv function."""
     attributes_df = pd.DataFrame(
     {
-        "applicationId": [""],
-        "attributeType": [""],
-        "availableFrom": [""],
+        "applicationId": [None],
+        "attributeType": [None],
+        "availableFrom": [None],
         "dataType": ["String"],
-        "dataset": [""],
-        "deprecatedFrom": [""],
+        "dataset": [None],
+        "deprecatedFrom": [None],
         "description": ["Example Attribute"],
         "identifier": ["example_attribute"],
         "index": [0],
-        "isCriticalDataElement": [""],
+        "isCriticalDataElement": [None],
         "isDatasetKey": [False],
         "isExternallyVisible": [True],
-        "isInternalDatasetKey": [""],
-        "isMetric": [""],
-        "isPropagationEligible": [""],
+        "isInternalDatasetKey": [None],
+        "isMetric": [None],
+        "isPropagationEligible": [None],
         "multiplier": [1.0],
-        "publisher": [""],
-        "source": [""],
+        "publisher": [None],
+        "source": [None],
         "sourceFieldId": ["example_attribute"],
         "term": ["bizterm1"],
         "title": ["Example Attribute"],
-        "unit": [""]
+        "unit": [None]
     },
     index=[0]
 )
+    for col in attributes_df.columns:            
+        if attributes_df[col].dtype == "bool":
+            attributes_df[col] = attributes_df[col].astype("object")  # Convert boolean to object
+        elif np.issubdtype(attributes_df[col].dtype, np.integer):
+            attributes_df[col] = attributes_df[col].astype("float")  # Convert integer to float
+
+    attributes_df = attributes_df.replace(to_replace=np.nan, value=None)
+    attributes_df = attributes_df.reset_index() if "index" not in attributes_df.columns else attributes_df
     with patch("fusion.fusion.pd.read_csv", return_value=attributes_df) as mock:
         yield mock
 

@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, Generator, cast
 
+import numpy as np
 import pandas as pd
 import pytest
 import requests
@@ -762,7 +763,7 @@ def test_attributes_to_dataframe_empty_csv(
     test_attributes = Attributes([])
     test_df = test_attributes.to_dataframe()
     test_df.to_csv("attributes.csv", index=False)
-    schema = pd.read_csv("attributes.csv")
+    schema = pd.read_csv("attributes.csv").replace(to_replace=np.nan, value=None)
     test_attributes_from_csv = Attributes().from_object(schema)
     assert schema.shape == (1, 22)  # Updated column count
     assert test_attributes_from_csv.attributes[0].title == "Example Attribute"

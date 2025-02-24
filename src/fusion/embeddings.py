@@ -20,10 +20,10 @@ from opensearchpy.exceptions import (
     ImproperlyConfigured,
     SSLError,
 )
-from opensearchpy.metrics import Metrics, MetricsNone
 
-from fusion._fusion import FusionCredentials
 from fusion.utils import get_session
+
+from .credentials import FusionCredentials
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -64,8 +64,6 @@ class FusionEmbeddingsConnection(Connection):  # type: ignore
             all requests made by this transport.
         pool_maxsize (int, optional): Maximum connection pool size used by pool-manager 
             for custom connection-pooling on current session.
-        metrics (Metrics, optional): Instance of a subclass of the `opensearchpy.Metrics` class, 
-            used for collecting and reporting metrics related to the client's operations.
 
     Keyword Args:
         root_url (str, optional): Root URL for the Fusion API. Defaults to 
@@ -91,10 +89,8 @@ class FusionEmbeddingsConnection(Connection):  # type: ignore
         http_compress: Any = None,
         opaque_id: Any = None,
         pool_maxsize: Any = None,
-        metrics: Metrics = MetricsNone(),  # noqa: B008
         **kwargs: Any,
     ) -> None:
-        self.metrics = metrics
 
         # Initialize Session so .headers works before calling super().__init__().
         fusion_root_url: str = kwargs.get("root_url", "https://fusion.jpmorgan.com/api/v1/")

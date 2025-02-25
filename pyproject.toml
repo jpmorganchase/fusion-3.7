@@ -34,10 +34,8 @@ cryptography = "<=3.1.0"
 pyjwt = "<=1.5.3"
 urllib3 = "1.26.6"
 pytz = "*"  # Required by pandas
-opensearch-py = { version = "2.1.1", optional = true}
+opensearch-py = "2.1.1"
 
-[tool.poetry.extras]
-embeddings = ["opensearch-py"]
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"

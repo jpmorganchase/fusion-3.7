@@ -24,6 +24,7 @@ import pandas as pd
 import requests
 from dateutil import parser
 from joblib import Parallel, delayed
+from pandas.io.json import json_normalize
 from tqdm import tqdm
 from urllib3.util.retry import Retry
 
@@ -674,7 +675,7 @@ def _format_full_index_response(response: requests.Response) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Dataframe containing the response formatted with a column for each index.
     """
-    df_resp = pd.json_normalize(response.json())
+    df_resp = json_normalize(response.json())
     df2 = df_resp.transpose()
     df2.index = df2.index.map(str)
     df2.columns = pd.Index(df2.loc["settings.index.provided_name"])
@@ -724,7 +725,7 @@ def _format_summary_index_response(response: requests.Response) -> pd.DataFrame:
             }
         )
 
-    summary_df = pd.json_normalize(indices)
+    summary_df = json_normalize(indices)
     summary_df = summary_df.set_index("index_name")
 
     return summary_df.transpose()

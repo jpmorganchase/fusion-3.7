@@ -881,6 +881,7 @@ class Fusion:
             catalog: Optional[str] = None,
             distribution: str = "parquet",
             show_progress: bool = True,
+            multipart: bool = True,
             return_paths: bool = False,
             chunk_size: int = 5 * 2 ** 20,
             from_date: Optional[str] = None,
@@ -898,6 +899,7 @@ class Fusion:
             catalog (str, optional): A catalog identifier. Defaults to 'common'.
             distribution (str, optional): A distribution type, e.g. a file format or raw
             show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            multipart (bool, optional): Is multipart upload.
             return_paths (bool, optional): Return paths and success statuses of the downloaded files.
             chunk_size (int, optional): Maximum chunk size.
             from_date (str, optional): start of the data date range contained in the distribution,
@@ -927,9 +929,9 @@ class Fusion:
             data_map_df,
             parallel=False,
             n_par=1,
-            multipart=False,
             chunk_size=chunk_size,
             show_progress=show_progress,
+            multipart=multipart,
             from_date=from_date,
             to_date=to_date,
         )

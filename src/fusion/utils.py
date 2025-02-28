@@ -76,6 +76,7 @@ RECOGNIZED_FORMATS = [
     "mp4",
     "mov",
     "mkv",
+    "gz",
 ]
 
 re_str_1 = re.compile("(.)([A-Z][a-z]+)")
@@ -491,9 +492,10 @@ def upload_files(  # noqa: PLR0913
 
     def _upload(p_url: str, path: str, file_name: str | None = None) -> tuple[bool, str, str | None]:
         try:
-            mp = multipart and fs_local.size(path) > chunk_size
-
             if isinstance(fs_local, BytesIO):
+                fs_local.seek(0, 2)
+                size_in_bytes = fs_local.tell()
+                mp = multipart and size_in_bytes > chunk_size
                 fs_fusion.put(
                     fs_local,
                     p_url,
@@ -506,6 +508,7 @@ def upload_files(  # noqa: PLR0913
                     additional_headers=additional_headers,
                 )
             else:
+                mp = multipart and fs_local.size(path) > chunk_size
                 with fs_local.open(path, "rb") as file_local:
                     fs_fusion.put(
                         file_local,

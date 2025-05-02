@@ -23,7 +23,7 @@ env:
 jobs:
   test-and-build:
     name: Test and Build for Python 3.7
-    runs-on: ubuntu-22.04  # OS for the runner; ensure compatibility with Python 3.7
+    runs-on: ubuntu-24.04  # OS for the runner; ensure compatibility with Python 3.7
 
     # Job steps
     steps:

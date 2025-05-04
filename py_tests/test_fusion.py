@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import re
 from io import BytesIO
 from pathlib import Path
@@ -17,6 +18,7 @@ from fusion import Fusion
 from fusion.attributes import Attribute, Types
 from fusion.credentials import FusionCredentials
 from fusion.exceptions import CredentialError, FileFormatError
+from fusion.fusion import logger
 from fusion.utils import _normalise_dt_param, distribution_to_url
 
 
@@ -1973,6 +1975,60 @@ def test_fusion_output_dataflow(fusion_obj: Fusion) -> None:
     assert test_output_dataflow.consumer_application_id == [{"id": "12345", "type": "Application (SEAL)"}]
     assert test_output_dataflow.flow_details == {"flowDirection": "Output"}
     assert test_output_dataflow.client == fusion_obj
+
+def test_fusion_init_logging_to_specified_file(credentials: FusionCredentials, tmp_path: str) -> None:
+    log_path = tmp_path / "custom_log_folder"
+    if not log_path.exists():
+        log_path.mkdir(parents=True)
+
+    # Clear handlers to avoid test contamination
+    logger.handlers.clear()
+
+    Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
+
+    # Check that StreamHandler and FileHandler were added
+    assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+    assert any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+
+    # Confirm log file exists
+    log_file = log_path / "fusion_sdk.log"
+    assert log_file.exists()
+
+    # Clean up for other tests
+    logger.handlers.clear()
+
+
+def test_fusion_init_logging_enabled_to_stdout_and_file(credentials: FusionCredentials, tmp_path: str) -> None:
+    log_path = tmp_path / "logs"
+    if not log_path.exists():
+        log_path.mkdir(parents=True)
+
+    # Clear logger handlers to avoid contamination
+    logger.handlers.clear()
+
+    Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
+
+    # Ensure the logger is configured with both handlers
+    assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
+    assert any(isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+
+    # Verify the log file exists
+    log_file = log_path / "fusion_sdk.log"
+    assert log_file.exists()
+
+    logger.handlers.clear()
+
+
+def test_fusion_init_logging_disabled(credentials: FusionCredentials) -> None:
+    logger.handlers.clear()
+
+    Fusion(credentials=credentials, enable_logging=False)
+
+    assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
+    assert all(not isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+
+    logger.handlers.clear()
+
 
 
 

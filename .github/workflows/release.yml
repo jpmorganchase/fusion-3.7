@@ -1,5 +1,4 @@
 # Publish package on main branch if it's tagged with 'v*'
-
 name: release & publish workflow
 
 # Controls when the action will run.
@@ -15,46 +14,58 @@ on:
 permissions:
   contents: write
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
+
 jobs:
   # This workflow contains a single job called "release"
   release:
     name: Create Release
-    runs-on: ubuntu-24.04
-
-    strategy:
-      matrix:
-        python-versions: [3.7]
+    runs-on: ubuntu-22.04
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - name: Get version from tag
         id: tag_name
         run: |
-          echo ::set-output name=current_version::${GITHUB_REF#refs/tags/v}
-        shell: bash
+          echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Checkout main repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: main_repo
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
+      
       - name: Get Changelog Entry
         id: changelog_reader
         uses: mindsers/changelog-reader-action@v2
         with:
           path: main_repo/CHANGELOG.md
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-versions }}
-
-      - name: Install dependencies
+      - name: Install system dependencies for Python 3.7
         run: |
-          python -m pip install --upgrade pip
-          pip install poetry
+          sudo apt-get update
+          sudo apt-get install -y tar build-essential checkinstall libreadline-dev \
+            libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev \
+            libbz2-dev openssl libffi-dev
+
+      - name: Build and Install Python 3.7.9
+        run: |
+          mkdir -p $HOME/opt
+          cd $HOME/opt
+          curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tgz
+          tar -xzf Python-3.7.9.tgz
+          cd Python-3.7.9
+          ./configure --enable-shared --enable-optimizations --prefix=/usr/local LDFLAGS="-Wl,--rpath=/usr/local/lib"
+          sudo make altinstall
+          python3.7 -V
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3.7 - --version 1.5.1
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry --version
 
       - name: Setup main repo deploy git user
         run: |
@@ -64,10 +75,12 @@ jobs:
 
       - name: Build wheels and source tarball
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry env use python3.7
           poetry build
         working-directory: main_repo
 
-      - name: create github release
+      - name: Create GitHub release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
@@ -77,10 +90,10 @@ jobs:
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: publish to PyPI
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_PUBLISHING_TOKEN }}
-          skip_existing: true
-          packages_dir: main_repo/dist/
+          skip-existing: true
+          packages-dir: main_repo/dist/

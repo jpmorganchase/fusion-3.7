@@ -8,10 +8,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 import fsspec
 import pytest
+from requests.adapters import HTTPAdapter
 
 from fusion.authentication import FusionOAuthAdapter
 from fusion.credentials import FusionCredentials
-from fusion.exceptions import CredentialError
+from fusion.exceptions import APIResponseError, CredentialError
 from fusion.utils import get_default_fs
 
 from .conftest import change_dir
@@ -147,3 +148,41 @@ def test_from_object_with_json_file(tmp_path: Path) -> None:
     assert creds.client_secret == "my_client_secret"
     assert creds.resource == "my_resource"
     assert creds.auth_url == "my_auth_url"
+
+def test_send_raises_api_response_error_on_generic_exception() -> None:
+    request = Mock()
+    request.url = "https://example.com/data"
+    request.headers = {}
+
+    mock_credentials = Mock(spec=FusionCredentials)
+    mock_credentials.get_fusion_token_headers.return_value = {}
+    mock_credentials.proxies = {}
+
+    adapter = FusionOAuthAdapter(credentials=mock_credentials)
+
+    with patch.object(HTTPAdapter, "send", side_effect=RuntimeError("Unexpected failure")), \
+     pytest.raises(APIResponseError) as exc_info:
+        adapter.send(request)
+
+    assert "Unexpected error while sending request" in str(exc_info.value)
+    HTTP_STATUS_INTERNAL_SERVER_ERROR = 500
+    assert exc_info.value.status_code == HTTP_STATUS_INTERNAL_SERVER_ERROR
+
+def test_send_raises_api_response_error_on_connection_error() -> None:
+    request = Mock()
+    request.url = "https://example.com/data"
+    request.headers = {}
+
+    mock_credentials = Mock(spec=FusionCredentials)
+    mock_credentials.get_fusion_token_headers.return_value = {}
+    mock_credentials.proxies = {}
+
+    adapter = FusionOAuthAdapter(credentials=mock_credentials)
+
+    with patch.object(HTTPAdapter, "send", side_effect=ConnectionError("Connection failed")), \
+     pytest.raises(APIResponseError) as exc_info:
+        adapter.send(request)
+
+    assert "Connection error while sending request" in str(exc_info.value)
+    HTTP_STATUS_SERVICE_UNAVAILABLE = 503
+    assert exc_info.value.status_code == HTTP_STATUS_SERVICE_UNAVAILABLE

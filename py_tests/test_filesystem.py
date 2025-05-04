@@ -681,5 +681,76 @@ async def test_ls_real_file(
     expected = [{"name": "123-456.data.csv", "size": 1234, "type": "file"}]
     assert result == expected
 
+@patch.object(FusionHTTPFileSystem, "_raise_not_found_for_status", side_effect=FileNotFoundError("not found"))
+@patch("fsspec.AbstractFileSystem", autospec=True)
+@pytest.mark.asyncio
+async def test_async_raise_not_found_for_status_404_raises_wrapped_exception(
+    mock_fs_class: MagicMock,
+    mock_raise: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    response = MagicMock()
+    response.status = 404
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    with pytest.raises(APIResponseError) as exc_info:
+        await fs._async_raise_not_found_for_status(response, "http://example.com/foo.csv")
+
+    assert exc_info.value.status_code == 404
+    assert "Error when accessing http://example.com/foo.csv" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, FileNotFoundError)
 
 
+@patch.object(FusionHTTPFileSystem, "_raise_not_found_for_status", side_effect=RuntimeError("unexpected"))
+@patch("fsspec.AbstractFileSystem", autospec=True)
+@pytest.mark.asyncio
+async def test_async_raise_not_found_for_status_non_404_raises_wrapped_exception(
+    mock_fs_class: MagicMock,
+    mock_raise: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    response = asynctest.CoroutineMock()
+    response.status = 500
+    response.text = asynctest.CoroutineMock(return_value="Internal Error")
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    with pytest.raises(APIResponseError) as exc_info:
+        await fs._async_raise_not_found_for_status(response, "http://example.com/bar.csv")
+
+    assert exc_info.value.status_code == 500
+    assert "Error when accessing http://example.com/bar.csv" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert response.reason == "Internal Error"
+
+@pytest.mark.asyncio
+async def test_async_raise_not_found_for_status_403_raises_wrapped_exception() -> None:
+    fs = FusionHTTPFileSystem(credentials=None)
+
+    # Simulate response with non-404 that still errors
+    response = MagicMock()
+    response.status = 403
+    response.text = asynctest.CoroutineMock(return_value="Forbidden")
+    
+    # Trigger actual raise from inside _raise_not_found_for_status by setting response.raise_for_status
+    response.raise_for_status.side_effect = ValueError("original error")
+
+    with pytest.raises(APIResponseError) as exc_info:
+        await fs._async_raise_not_found_for_status(response, "http://example.com")
+
+    assert exc_info.value.status_code == 403
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert "http://example.com" in str(exc_info.value)

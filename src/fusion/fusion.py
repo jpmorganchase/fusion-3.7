@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
+from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
 
@@ -372,7 +373,7 @@ class Fusion:
                     data = {col: resp_json.get(col, None) for col in cols}
                     return pd.DataFrame([data])
                 else:
-                    return pd.json_normalize(resp_json)
+                    return json_normalize(resp_json)
 
         url = f"{self.root_url}catalogs/{catalog}/datasets"
         ds_df = Fusion._call_for_dataframe(url, self.session)

@@ -1,6 +1,7 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
 from __future__ import annotations
 
+import copy
 import json as js
 import logging
 import re
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
-from joblib import Parallel, delayed
+from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
 
@@ -19,7 +20,7 @@ from .attributes import Attribute, Attributes
 from .credentials import FusionCredentials
 from .dataflow import InputDataFlow, OutputDataFlow
 from .dataset import Dataset
-from .exceptions import APIResponseError
+from .exceptions import APIResponseError, CredentialError, FileFormatError
 from .fusion_filesystem import FusionHTTPFileSystem
 from .fusion_types import Types
 from .product import Product
@@ -35,12 +36,13 @@ from .utils import (
     normalise_dt_param_str,
     path_to_url,
     requests_raise_for_status,
-    tqdm_joblib,
     upload_files,
     validate_file_names,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     import fsspec
     import requests
 
@@ -93,6 +95,7 @@ class Fusion:
         log_level: int = logging.ERROR,
         log_path: str = ".",
         fs: fsspec.filesystem = None,
+        enable_logging: bool = True,
     ) -> None:
         """Constructor to instantiate a new Fusion object.
 
@@ -104,6 +107,8 @@ class Fusion:
             log_level (int): Set the logging level. Defaults to logging.ERROR.
             log_path (str): The folder path where the log is stored. Defaults to the current directory.
             fs (fsspec.filesystem): filesystem.
+            enable_logging (bool, optional): If True, enables logging to a file in addition to stdout.
+                If False, logging is only directed to stdout. Defaults to True.
         """
         self._default_catalog = "common"
 
@@ -111,24 +116,39 @@ class Fusion:
         self.download_folder = download_folder
         Path(download_folder).mkdir(parents=True, exist_ok=True)
 
+        # Always log to stdout, conditionally to file
         if logger.hasHandlers():
             logger.handlers.clear()
-        file_handler = logging.FileHandler(filename=f"{log_path}/fusion_sdk.log")
+
         logging.addLevelName(VERBOSE_LVL, "VERBOSE")
-        stdout_handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter(
             "%(asctime)s.%(msecs)03d %(name)s:%(levelname)s %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
+
+        # Always add stdout handler
+        stdout_handler = logging.StreamHandler(sys.stdout)
         stdout_handler.setFormatter(formatter)
         logger.addHandler(stdout_handler)
-        logger.addHandler(file_handler)
         logger.setLevel(log_level)
+
+        # Optionally add file handler
+        if enable_logging:
+            file_handler = logging.FileHandler(filename=f"{log_path}/fusion_sdk.log")
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
 
         if isinstance(credentials, FusionCredentials):
             self.credentials = credentials
         elif isinstance(credentials, str):
-            self.credentials = FusionCredentials.from_file(Path(credentials))  # type: ignore
+            try:
+                self.credentials = FusionCredentials.from_file(Path(credentials)) # type: ignore
+            except CredentialError as e:
+                if hasattr(e, "status_code"):
+                    message = "Failed to load credentials. Please check the credentials file."
+                    raise APIResponseError(e, message=message) from e
+                else:
+                    raise e
         else:
             raise ValueError("credentials must be a path to a credentials file or a dictionary")
 
@@ -173,13 +193,19 @@ class Fusion:
         """
         return catalog if catalog else self.default_catalog
 
-    def get_fusion_filesystem(self) -> FusionHTTPFileSystem:
-        """Creates Fusion Filesystem.
+    def get_fusion_filesystem(self, **kwargs: Any) -> FusionHTTPFileSystem:
+        """Retrieve Fusion file system instance.
+        Note: This function always returns a reference to the exact same FFS instance since
+        an FFS instance is based off the FusionCredentials object.
 
         Returns: Fusion Filesystem
 
         """
-        return FusionHTTPFileSystem(client_kwargs={"root_url": self.root_url, "credentials": self.credentials})
+        as_async = kwargs.get("asynchronous", False)
+        return FusionHTTPFileSystem(
+            asynchronous=as_async,
+            client_kwargs={"root_url": self.root_url, "credentials": self.credentials}
+            )
 
     def list_catalogs(self, output: bool = False) -> pd.DataFrame:
         """Lists the catalogs available to the API account.
@@ -287,7 +313,7 @@ class Fusion:
 
         return filtered_df
 
-    def list_datasets(  # noqa: PLR0913
+    def list_datasets(  # noqa: PLR0912, PLR0913
             self,
             contains: Union[str, List[str], None] = None,
             id_contains: bool = False,
@@ -304,7 +330,8 @@ class Fusion:
         Args:
             contains (Union[str, list], optional): A string or a list of strings that are dataset
                 identifiers to filter the datasets list. If a list is provided then it will return
-                datasets whose identifier matches any of the strings. Defaults to None.
+                datasets whose identifier matches any of the strings. If a single dataset identifier is provided and
+                there is an exact match, only that dataset will be returned. Defaults to None.
             id_contains (bool): Filter datasets only where the string(s) are contained in the identifier,
                 ignoring description.
             product (Union[str, list], optional): A string or a list of strings that are product
@@ -322,6 +349,31 @@ class Fusion:
             class:`pandas.DataFrame`: a dataframe with a row for each dataset.
         """
         catalog = self._use_catalog(catalog)
+
+        # try for exact match
+        if contains and isinstance(contains, str):
+            url = f"{self.root_url}catalogs/{catalog}/datasets/{contains}"
+            resp = self.session.get(url)
+            status_success = 200
+            if resp.status_code == status_success:
+                resp_json = resp.json()
+                if not display_all_columns:
+                    cols = [
+                        "identifier",
+                        "title",
+                        "containerType",
+                        "region",
+                        "category",
+                        "coverageStartDate",
+                        "coverageEndDate",
+                        "description",
+                        "status",
+                        "type",
+                    ]
+                    data = {col: resp_json.get(col, None) for col in cols}
+                    return pd.DataFrame([data])
+                else:
+                    return json_normalize(resp_json)
 
         url = f"{self.root_url}catalogs/{catalog}/datasets"
         ds_df = Fusion._call_for_dataframe(url, self.session)
@@ -567,8 +619,11 @@ class Fusion:
 
         if datasetseries_list.empty:
             raise APIResponseError(  # pragma: no cover
-                f"No data available for dataset {dataset}. "
-                f"Check that a valid dataset identifier and date/date range has been set."
+               ValueError(
+                    f"No data available for dataset {dataset}. "
+                    f"Check that a valid dataset identifier and date/date range has been set."
+                ),
+                status_code=404,
             )
 
         if dt_str == "latest":
@@ -599,8 +654,11 @@ class Fusion:
 
         if len(datasetseries_list) == 0:
             raise APIResponseError(  # pragma: no cover
-                f"No data available for dataset {dataset} in catalog {catalog}.\n"
-                f"Check that a valid dataset identifier and date/date range has been set."
+                ValueError(
+                    f"No data available for dataset {dataset} in catalog {catalog}.\n"
+                    f"Check that a valid dataset identifier and date/date range has been set."
+                ),
+                status_code=404,
             )
 
         required_series = list(datasetseries_list["@id"])
@@ -612,7 +670,7 @@ class Fusion:
             self,
             dataset: str,
             dt_str: str = "latest",
-            dataset_format: str = "parquet",
+            dataset_format: str | None = "parquet",
             catalog: Optional[str] = None,
             n_par: Optional[int] = None,
             show_progress: bool = True,
@@ -630,7 +688,9 @@ class Fusion:
                 or both separated with a ":". Defaults to 'latest' which will return the most recent
                 instance of the dataset. If more than one series member exists on the latest date, the
                 series member identifiers will be sorted alphabetically and the last one will be downloaded.
-            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
+            dataset_format (str, optional): The file format, e.g. CSV or Parquet.
+                Defaults to 'parquet'. If set to None, the function will download
+                if only one format is available, else it will raise an error.
             catalog (str, optional): A catalog identifier. Defaults to 'common'.
             n_par (int, optional): Specify how many distributions to download in parallel.
                 Defaults to all cpus available.
@@ -648,7 +708,38 @@ class Fusion:
         """
         catalog = self._use_catalog(catalog)
 
+        # Check access to the dataset
+        dataset_url = f"{self.root_url}catalogs/{catalog}/datasets/{dataset}"
+        dataset_resp = self.session.get(dataset_url)
+        requests_raise_for_status(dataset_resp)
+
+        # Check subscription status
+        response_json = dataset_resp.json()
+        access_status = response_json.get("status")
+
+        if access_status != "Subscribed":
+            raise CredentialError(
+                f"You are not subscribed to {dataset} in catalog {catalog}. Please request access."
+            )
         valid_date_range = re.compile(r"^(\d{4}\d{2}\d{2})$|^((\d{4}\d{2}\d{2})?([:])(\d{4}\d{2}\d{2})?)$")
+
+        # Check that format is valid and if none, check if there is only one format available
+        available_formats = list(self.list_datasetmembers_distributions(dataset, catalog)["format"].unique())
+
+        if dataset_format and dataset_format not in available_formats:
+            raise FileFormatError(
+                f"Dataset format {dataset_format} is not available for {dataset} in catalog {catalog}. "
+                f"Available formats are {available_formats}."
+            )
+
+        if dataset_format is None:
+            if len(available_formats) == 1:
+                dataset_format = available_formats[0]
+            else:
+                raise FileFormatError(
+                    f"Multiple formats found for {dataset} in catalog {catalog}. Dataset format is required to "
+                    f"download. Available formats are {available_formats}."
+                )
 
         if valid_date_range.match(dt_str) or dt_str == "latest":
             required_series = self._resolve_distro_tuples(dataset, dt_str, dataset_format, catalog)
@@ -659,7 +750,7 @@ class Fusion:
             required_series = [(catalog, dataset, dt_str, dataset_format)]
 
         if dataset_format not in RECOGNIZED_FORMATS + ["raw"]:
-            raise ValueError(f"Dataset format {dataset_format} is not supported")
+            raise FileFormatError(f"Dataset format {dataset_format} is not supported")
 
         if not download_folder:
             download_folder = self.download_folder
@@ -707,15 +798,18 @@ class Fusion:
             VERBOSE_LVL,
             f"Beginning {len(download_spec)} downloads in batches of {n_par}",
         )
+        res = [None] * len(download_spec)
+
         if show_progress:
-            with tqdm_joblib(tqdm(total=len(download_spec))):
-                res = Parallel(n_jobs=n_par)(
-                    delayed(self.get_fusion_filesystem().download)(**spec) for spec in download_spec
-                )
+            with tqdm(total=len(download_spec)) as p:
+                for i, spec in enumerate(download_spec):
+                    r = self.get_fusion_filesystem().download(**spec)
+                    res[i] = r
+                    if r[0] is True:
+                        p.update(1)
         else:
-            res = Parallel(n_jobs=n_par)(
-                delayed(self.get_fusion_filesystem().download)(**spec) for spec in download_spec
-            )
+            res = [self.get_fusion_filesystem().download(**spec) for spec in download_spec]
+
 
         if (len(res) > 0) and (not all(r[0] for r in res)):
             for r in res:
@@ -751,7 +845,7 @@ class Fusion:
 
         return Fusion._call_for_bytes_object(url, self.session)
 
-    def upload(  # noqa: PLR0913
+    def upload(  # noqa: PLR0913, PLR0915
             self,
             path: str,
             dataset: Optional[str] = None,
@@ -822,13 +916,25 @@ class Fusion:
                     dt_str = dt_str if dt_str != "latest" else pd.Timestamp("today").date().strftime("%Y%m%d")
                     dt_str = pd.Timestamp(dt_str).date().strftime("%Y%m%d")
 
-                if catalog not in fs_fusion.ls("") or dataset not in [
-                    i.split("/")[-1] for i in fs_fusion.ls(f"{catalog}/datasets")
-                ]:
-                    msg = (
-                        f"File file has not been uploaded, one of the catalog: {catalog} "
-                        f"or dataset: {dataset} does not exit."
-                    )
+
+                try:
+                    catalog_list = fs_fusion.ls(catalog)
+                except FileNotFoundError:
+                    raise RuntimeError(f"The catalog '{catalog}' does not exist.") from None
+
+                try:
+                    if (
+                        catalog not in [i.split("/")[0] for i in catalog_list]
+                        or not js.loads(fs_fusion.cat(f"{catalog}/datasets/{dataset}"))["identifier"]
+                    ):
+                        msg = (
+                            f"File file has not been uploaded, one of the catalog: {catalog} "
+                            f"or dataset: {dataset} does not exist."
+                        )
+                        warnings.warn(msg, stacklevel=2)
+                        return [(False, path, msg)]
+                except Exception as e:  # noqa: BLE001
+                    msg = f"An error occurred while checking the dataset: {str(e)}"
                     warnings.warn(msg, stacklevel=2)
                     return [(False, path, msg)]
                 file_format = path.split(".")[-1]
@@ -878,6 +984,7 @@ class Fusion:
             catalog: Optional[str] = None,
             distribution: str = "parquet",
             show_progress: bool = True,
+            multipart: bool = True,
             return_paths: bool = False,
             chunk_size: int = 5 * 2 ** 20,
             from_date: Optional[str] = None,
@@ -895,6 +1002,7 @@ class Fusion:
             catalog (str, optional): A catalog identifier. Defaults to 'common'.
             distribution (str, optional): A distribution type, e.g. a file format or raw
             show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            multipart (bool, optional): Is multipart upload.
             return_paths (bool, optional): Return paths and success statuses of the downloaded files.
             chunk_size (int, optional): Maximum chunk size.
             from_date (str, optional): start of the data date range contained in the distribution,
@@ -924,7 +1032,7 @@ class Fusion:
             data_map_df,
             parallel=False,
             n_par=1,
-            multipart=False,
+            multipart=multipart,            
             chunk_size=chunk_size,
             show_progress=show_progress,
             from_date=from_date,
@@ -1704,6 +1812,40 @@ class Fusion:
         )
         dataflow_obj.client = self
         return dataflow_obj
+    
+    async def _async_stream_file(self, url: str, chunk_size: int = 100) -> AsyncGenerator[bytes, None]:
+        """Return async stream of a file fro mthe given url.
+        Args:
+            url (str): File url. Appends Fusion.root_url if http prefix not present.
+            chunk_size (int, optional): Size for each chunk in async stream. Defaults to 100.
+        Returns:
+            AsyncGenerator[bytes, None]: Async generator object.
+        Yields:
+            Iterator[AsyncGenerator[bytes, None]]: Next set of bytes read from the file at given url.
+        """
+        dup_credentials = copy.deepcopy(self.credentials)
+        async_fs = FusionHTTPFileSystem(
+            client_kwargs={"root_url": self.root_url, "credentials": dup_credentials}, asynchronous=True
+        )
+        session = await async_fs.set_session()
+        async with session:
+            async for chunk in async_fs._stream_file(url, chunk_size):
+                yield chunk
+
+    async def _async_get_file(self, url: str, chunk_size: int = 1000) -> bytes:
+        """Return a file from url as a bytes object, asynchronously.
+        Under the hood, opens up an async stream downloading file in chunk_size bytes per chunk.
+        Larger chunk sizes results in shorter execution time for this function.
+        Args:
+            url (str): File url. Appends Fusion.root_url if http prefix not present.
+            chunk_size (int, optional): Size of chunks to get from async stream. Defaults to 1000.
+        Returns:
+            bytes: File from url as a bytes object.
+        """
+        async_generator = self._async_stream_file(url, chunk_size)
+        bytes_list: list[bytes] = [chunk async for chunk in async_generator]
+        final_bytes: bytes = b"".join(bytes_list)
+        return final_bytes
 
     def to_df(  # noqa: PLR0913
             self,
@@ -1801,17 +1943,16 @@ class Fusion:
             self,
             last_event_id: str | None = None,
             catalog: str | None = None,
-            url: str = "https://fusion.jpmorgan.com/api/v1/",
-    ) -> None | pd.DataFrame:
+            url: str | None = None,
+    ) -> None:
         """Run server sent event listener in the background. Retrieve results by running get_events.
 
         Args:
             last_event_id (str): Last event ID (exclusive).
             catalog (str): catalog.
-            url (str): subscription url.
+            url (str): subscription url. Defaults to client's root url.
         Returns:
-            Union[None, class:`pandas.DataFrame`]: If in_background is True then the function returns no output.
-                If in_background is set to False then pandas DataFrame is output upon keyboard termination.
+            None
         """
         raise NotImplementedError("Method not implemented")
 
@@ -1820,7 +1961,7 @@ class Fusion:
             last_event_id: str | None = None,
             catalog: str | None = None,
             in_background: bool = True,
-            url: str = "https://fusion.jpmorgan.com/api/v1/",
+            url: str | None = None,
     ) -> None | pd.DataFrame:
         """Run server sent event listener and print out the new events. Keyboard terminate to stop.
 
@@ -1834,3 +1975,33 @@ class Fusion:
                 If in_background is set to False then pandas DataFrame is output upon keyboard termination.
         """
         raise NotImplementedError("Method not implemented")
+    
+    def list_datasetmembers_distributions(
+    self,
+    dataset: str,
+    catalog: Optional[str] = None,
+) -> pd.DataFrame:
+        """List the distributions of dataset members.
+
+        Args:
+            dataset (str): Dataset identifier.
+            catalog (Optional[str], optional): A catalog identifier. Defaults to 'common'.
+
+        Returns:
+            pd.DataFrame: A dataframe with a row for each dataset member distribution.
+        """
+        catalog = self._use_catalog(catalog)
+
+        url = f"{self.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
+        resp = self.session.get(url)
+        dists = resp.json()["datasets"][0]["distributions"]
+
+        data = []
+        for dist in dists:
+            values = dist.get("values")
+            member_id = values[5]
+            member_format = values[6]
+            data.append((member_id, member_format))
+
+        members_df = pd.DataFrame(data, columns=["identifier", "format"])
+        return members_df

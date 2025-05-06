@@ -9,10 +9,12 @@ import asynctest
 import fsspec
 import pytest
 from aiohttp import ClientResponse
+from asynctest import CoroutineMock
 from pytest_mock import MockerFixture
 from typing_extensions import Literal
 
 from fusion.credentials import FusionCredentials
+from fusion.exceptions import APIResponseError
 from fusion.fusion_filesystem import FusionHTTPFileSystem
 
 AsyncMock = asynctest.CoroutineMock
@@ -107,6 +109,68 @@ async def test_isdir_false(http_fs_instance: FusionHTTPFileSystem) -> None:
     http_fs_instance._info = asynctest.CoroutineMock(return_value={"type": "file"})
     result = await http_fs_instance._isdir("path_file")
     assert not result
+
+@pytest.mark.asyncio
+async def test_check_sess_open(http_fs_instance: FusionHTTPFileSystem) -> None:
+    new_fs_session_closed =  not http_fs_instance._check_session_open()
+    assert new_fs_session_closed
+
+    # Corresponds to running .set_session()
+    session_mock = MagicMock()
+    session_mock.closed = False
+    http_fs_instance._session = session_mock
+    fs_session_open = http_fs_instance._check_session_open()
+    assert fs_session_open
+
+    # Corresponds to situation where session was closed
+    session_mock2 = MagicMock()
+    session_mock2.closed = True
+    http_fs_instance._session = session_mock2
+    fs_session_closed = not http_fs_instance._check_session_open()
+    assert fs_session_closed
+
+
+@pytest.mark.asyncio
+async def test_async_startup(http_fs_instance: FusionHTTPFileSystem) -> None:
+    http_fs_instance._session = None
+
+    with patch("fusion.fusion_filesystem.FusionHTTPFileSystem.set_session") as SetSessionMock:
+        with pytest.raises(RuntimeError) as re:
+            await http_fs_instance._async_startup()
+
+        SetSessionMock.assert_called_once()
+        assert "FusionFS session closed before operation" in str(re.value)
+
+    # Mock an open session
+    MockClient = MagicMock()
+    MockClient.closed = False
+    http_fs_instance._session = MockClient
+
+    with patch("fusion.fusion_filesystem.FusionHTTPFileSystem.set_session") as SetSessionMock2:
+        await http_fs_instance._async_startup()
+        SetSessionMock2.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_exists_methods(http_fs_instance: FusionHTTPFileSystem) -> None:
+    with patch("fusion.fusion_filesystem.HTTPFileSystem.exists") as MockExists:
+        MockExists.return_value = True
+        exists_out = http_fs_instance.exists("dummy_path")
+        MockExists.assert_called_once()
+        assert exists_out
+
+    with patch(
+            "fusion.fusion_filesystem.HTTPFileSystem._exists", new_callable=CoroutineMock # type: ignore
+        ) as Mock_Exists:
+            with patch(
+                "fusion.fusion_filesystem.FusionHTTPFileSystem._async_startup", new_callable=CoroutineMock # type: ignore
+            ) as MockStartup:
+                Mock_Exists.return_value = True
+                _exists_out = await http_fs_instance._exists("dummy_path")
+
+            assert Mock_Exists.await_count == 1
+            assert MockStartup.await_count == 1
+            assert _exists_out
 
 @patch("requests.Session")
 def test_stream_single_file(mock_session_class: MagicMock, example_creds_dict: Dict[str, Any], tmp_path: Path) -> None:
@@ -439,3 +503,254 @@ def test_download(  # noqa: PLR0913
         assert result == (True, Path(expected_lpath), None)
     else:
         assert result == (True, lpath, None)
+
+@patch.object(FusionHTTPFileSystem, "get", return_value=("mocked_return", "mocked_lpath", "mocked_extra"))
+@patch.object(FusionHTTPFileSystem, "set_session", new_callable=asynctest.CoroutineMock)
+@patch("fsspec.AbstractFileSystem", autospec=True)
+def test_raise_not_found_for_status_raises_wrapped_exception(
+    mock_fs_class: MagicMock,
+    mock_set_session: asynctest.CoroutineMock,
+    mock_get: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    response = MagicMock()
+    response.status = 403
+    original_exception = ValueError("original error")
+    response.raise_for_status.side_effect = original_exception  # ⬅️ simulate internal failure
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    with pytest.raises(APIResponseError) as exc_info:
+        fs._raise_not_found_for_status(response, "http://example.com")
+
+    assert exc_info.value.status_code == 403
+    assert "Error when accessing http://example.com" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ValueError)
+
+@pytest.mark.asyncio
+async def test_changes_returns_valid_json() -> None:
+    fs = FusionHTTPFileSystem(credentials={})
+    fs._decorate_url = lambda x: x
+    fs.set_session = AsyncMock()
+
+    mock_session = AsyncMock()
+    fs.set_session.return_value = mock_session
+
+    mock_response = AsyncMock()
+    mock_response.json.return_value = {"key": "value"}
+    mock_response.__aenter__.return_value = mock_response
+    mock_session.get.return_value = mock_response
+
+    fs._raise_not_found_for_status = MagicMock()
+
+    result = await fs._changes("http://test.com/api/changes")
+    assert result == {"key": "value"}
+    fs._raise_not_found_for_status.assert_called_once_with(mock_response, "http://test.com/api/changes")
+
+@pytest.mark.asyncio
+async def test_changes_json_parsing_failure() -> None:
+    fs = FusionHTTPFileSystem(credentials={})
+    fs._decorate_url = lambda x: x
+    fs.set_session = AsyncMock()
+    fs._raise_not_found_for_status = MagicMock()
+
+    mock_session = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.json.side_effect = ValueError("bad json")
+    mock_response.__aenter__.return_value = mock_response
+    mock_session.get.return_value = mock_response
+    fs.set_session.return_value = mock_session
+
+    result = await fs._changes("http://test.com/api/changes")
+    assert result == {}
+
+@pytest.mark.asyncio
+async def test_changes_raises_exception_on_failure() -> None:
+    fs = FusionHTTPFileSystem(credentials={})
+    fs._decorate_url = lambda x: x
+    fs.set_session = AsyncMock(side_effect=RuntimeError("bad session"))
+
+    with pytest.raises(RuntimeError):
+        await fs._changes("http://test.com/api/changes")
+
+@pytest.mark.asyncio
+async def test_ls_real_distribution_file() -> None:
+    fs = FusionHTTPFileSystem(credentials={})
+    fs.set_session = AsyncMock()
+
+    fs.client_kwargs = {"root_url": "https://mysite.com/"}
+    fs.kwargs = {}
+
+    mock_session = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.headers = {"Content-Length": "1234"}
+    mock_response.__aenter__.return_value = mock_response
+    fs.set_session.return_value = mock_session
+    fs._raise_not_found_for_status = MagicMock()
+
+    mock_session.head.return_value = mock_response
+
+    url = "https://mysite.com/catalogs/abc/distributions/123/resources/456/data.csv"
+    result = await fs._ls_real(url, detail=True)
+
+    assert result == [{"name": "abc-123-456.data.csv", "size": 1234, "type": "file"}]
+
+@pytest.mark.asyncio
+@patch.object(FusionHTTPFileSystem, "get", return_value=("mocked_return", "mocked_lpath", "mocked_extra"))
+@patch.object(FusionHTTPFileSystem, "set_session", new_callable=asynctest.CoroutineMock)
+@patch("fsspec.AbstractFileSystem", autospec=True)
+async def test_ls_real_directory(
+    mock_fs_class: MagicMock,
+    mock_set_session: asynctest.CoroutineMock,
+    mock_get: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    """
+    Test the _ls_real method for directory listing.
+    """
+    # Mock the session and response for _ls_real
+    mock_session = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.json.return_value = {"resources": [{"identifier": "folder1"}, {"identifier": "file2.csv"}]}
+    mock_response.__aenter__.return_value = mock_response
+    mock_session.get.return_value = mock_response
+    mock_set_session.return_value = mock_session
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    
+    creds = FusionCredentials.from_file(credentials_file)
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    # Test directory listing without detail
+    url = "https://mysite.com/catalogs/dataset/resources"
+    result = await fs._ls_real(url, detail=False)
+    
+    expected = ["https://mysite.com/catalogs/dataset/resources/folder1", "https://mysite.com/catalogs/dataset/resources/file2.csv"]
+    assert result == expected
+
+    # Test directory listing with detail
+    result = await fs._ls_real(url, detail=True)
+    expected_detail = [
+        {"name": "https://mysite.com/catalogs/dataset/resources/folder1", "size": None, "type": "directory"},
+        {"name": "https://mysite.com/catalogs/dataset/resources/file2.csv", "size": None, "type": "file"},
+    ]
+    assert result == expected_detail
+
+@pytest.mark.asyncio
+@patch.object(FusionHTTPFileSystem, "get", return_value=("mocked_return", "mocked_lpath", "mocked_extra"))
+@patch.object(FusionHTTPFileSystem, "set_session", new_callable=asynctest.CoroutineMock)
+@patch("fsspec.AbstractFileSystem", autospec=True)
+async def test_ls_real_file(
+    mock_fs_class: MagicMock,
+    mock_set_session: asynctest.CoroutineMock,
+    mock_get: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    """
+    Test the _ls_real method for file listing.
+    """
+    # Mock the session and response for a file
+    mock_session = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.headers = {"Content-Length": "1234"}
+    mock_response.__aenter__.return_value = mock_response
+    mock_session.head.return_value = mock_response
+    mock_set_session.return_value = mock_session
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    
+    creds = FusionCredentials.from_file(credentials_file)
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    # Test file listing
+    url = "https://mysite.com/catalogs/dataset/distributions/123/resources/456/data.csv"
+    result = await fs._ls_real(url, detail=True)
+
+    expected = [{"name": "123-456.data.csv", "size": 1234, "type": "file"}]
+    assert result == expected
+
+@patch.object(FusionHTTPFileSystem, "_raise_not_found_for_status", side_effect=FileNotFoundError("not found"))
+@patch("fsspec.AbstractFileSystem", autospec=True)
+@pytest.mark.asyncio
+async def test_async_raise_not_found_for_status_404_raises_wrapped_exception(
+    mock_fs_class: MagicMock,
+    mock_raise: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    response = MagicMock()
+    response.status = 404
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    with pytest.raises(APIResponseError) as exc_info:
+        await fs._async_raise_not_found_for_status(response, "http://example.com/foo.csv")
+
+    assert exc_info.value.status_code == 404
+    assert "Error when accessing http://example.com/foo.csv" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, FileNotFoundError)
+
+
+@patch.object(FusionHTTPFileSystem, "_raise_not_found_for_status", side_effect=RuntimeError("unexpected"))
+@patch("fsspec.AbstractFileSystem", autospec=True)
+@pytest.mark.asyncio
+async def test_async_raise_not_found_for_status_non_404_raises_wrapped_exception(
+    mock_fs_class: MagicMock,
+    mock_raise: MagicMock,
+    example_creds_dict: Dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    response = asynctest.CoroutineMock()
+    response.status = 500
+    response.text = asynctest.CoroutineMock(return_value="Internal Error")
+
+    credentials_file = tmp_path / "client_credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict, f)
+    creds = FusionCredentials.from_file(credentials_file)
+
+    fs = FusionHTTPFileSystem(credentials=creds)
+
+    with pytest.raises(APIResponseError) as exc_info:
+        await fs._async_raise_not_found_for_status(response, "http://example.com/bar.csv")
+
+    assert exc_info.value.status_code == 500
+    assert "Error when accessing http://example.com/bar.csv" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert response.reason == "Internal Error"
+
+@pytest.mark.asyncio
+async def test_async_raise_not_found_for_status_403_raises_wrapped_exception() -> None:
+    fs = FusionHTTPFileSystem(credentials=None)
+
+    # Simulate response with non-404 that still errors
+    response = MagicMock()
+    response.status = 403
+    response.text = asynctest.CoroutineMock(return_value="Forbidden")
+    
+    # Trigger actual raise from inside _raise_not_found_for_status by setting response.raise_for_status
+    response.raise_for_status.side_effect = ValueError("original error")
+
+    with pytest.raises(APIResponseError) as exc_info:
+        await fs._async_raise_not_found_for_status(response, "http://example.com")
+
+    assert exc_info.value.status_code == 403
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert "http://example.com" in str(exc_info.value)

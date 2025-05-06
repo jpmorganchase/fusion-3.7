@@ -22,10 +22,9 @@ env:
 
 jobs:
   test-and-build:
-    name: Test and Build for Python 3.7
-    runs-on: ubuntu-20.04  # OS for the runner; ensure compatibility with Python 3.7
+    name: Build and Test for Python 3.7.9
+    runs-on: ubuntu-22.04
 
-    # Job steps
     steps:
       # Step 1: Check out the repository
       - name: Checkout repository
@@ -33,13 +32,35 @@ jobs:
         with:
           fetch-depth: 0  # Fetch full history for versioning or tags if needed
 
-      # Step 2: Set up Python 3.7.9
-      - name: Set up Python 3.7.9
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.7.9
+      # Step 2: Install system dependencies for python 3.7.9
+      - name: Install system dependencies for Python 3.7.9
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tar build-essential checkinstall libreadline-dev \
+            libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev \
+            libbz2-dev openssl libffi-dev
+      
+      # Step 3: Set up Python 3.7.9
+      - name: Build and Install Python 3.7.9 from source
+        run: |
+          mkdir -p $HOME/opt
+          cd $HOME/opt
+          curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tgz
+          tar -xzf Python-3.7.9.tgz
+          cd Python-3.7.9
+          ./configure --enable-shared --enable-optimizations --prefix=/usr/local LDFLAGS="-Wl,--rpath=/usr/local/lib"
+          sudo make altinstall
+          python3.7 -V
 
-      # Step 3: Cache Poetry dependencies to speed up subsequent runs
+      # Step 4: Install Poetry
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3.7 - --version 1.5.1
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry --version
+
+      # Step 5: Cache Poetry dependencies
       - name: Cache Poetry dependencies
         uses: actions/cache@v3
         with:
@@ -48,38 +69,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-poetry-
 
-      # Step 4: Install Poetry
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python - --version 1.5.1
-          export PATH="$HOME/.local/bin:$PATH"
-          poetry --version
-
-      # Step 5: Install project dependencies (including dev and extras)
-      - name: Install dependencies
+      # Step 6: Install project dependencies
+      - name: Install project dependencies
         run: |
           export PATH="$HOME/.local/bin:$PATH"
+          poetry env use python3.7
           poetry install --all-extras --with dev
 
-      # Step 6: Run linters using Tox
+      # Step 7: Run linters using Tox
       - name: Run Linting
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           poetry run tox -e lint
 
-      # Step 7: Run tests using Tox
+      # Step 8: Run tests using Tox
       - name: Run Tests
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           poetry run tox -e test
 
-      # Step 8: Build distribution artifacts using Poetry
+      # Step 9: Build distribution artifacts using Poetry
       - name: Build Distribution
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           poetry build
 
-      # Upload build artifacts for inspection or release
+      # Step 9: Upload build artifacts for inspection or release
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:

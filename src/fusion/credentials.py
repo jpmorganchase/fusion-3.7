@@ -75,7 +75,7 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
         if not parsed.scheme or not parsed.netloc:
             raise ValueError("Invalid URL")
     except ValueError as err:
-        raise CredentialError(f"Could not parse URL: {url}") from err
+        raise CredentialError(f"Could not parse URL: {url}, status code: 400") from err
         
     segments = [seg for seg in parsed.path.split("/") if seg]
 
@@ -89,8 +89,9 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
         cat_idx = segments.index("catalogs")
         catalog_name = segments[cat_idx + 1]
     except (ValueError, IndexError) as err:
+        status_code = getattr(err, 'status_code', 400)
         raise CredentialError(
-            "'catalogs' segment not found or catalog name missing in the path"
+            f"'catalogs' segment not found or catalog name missing in the path, status code: {status_code}"
         ) from err
 
     # Extract dataset_name
@@ -98,8 +99,9 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
         ds_idx = segments.index("datasets")
         dataset_name = segments[ds_idx + 1]
     except (ValueError, IndexError) as err:
+        status_code = getattr(err, 'status_code', 400)
         raise CredentialError(
-            "'datasets' segment not found or dataset name missing in the path"
+            f"'datasets' segment not found or dataset name missing in the path (status code: {status_code})"
         ) from err
 
     logger.debug(f"Found Catalog: {catalog_name}, Dataset: {dataset_name}")
@@ -304,20 +306,21 @@ class FusionCredentials:
         try:
             creds_data = json.loads(contents)
         except json.JSONDecodeError as e:
-            raise CredentialError(f"Invalid JSON: {e}\nContents:\n{contents}") from e
+            status_code = getattr(e, 'status_code', 400)
+            raise CredentialError(f"Invalid JSON: {e}\nContents:\n{contents}, status code: {status_code}") from e
 
         creds = FusionCredsPersistent(**creds_data)
 
         client_id = creds.client_id or os.environ.get("FUSION_CLIENT_ID")
         if client_id is None:
-            raise CredentialError("Missing client ID")
+            raise CredentialError("Missing client ID, status code: 400")
 
         if creds.grant_type == "client_credentials":
             client_secret = creds.client_secret or os.environ.get(
                 "FUSION_CLIENT_SECRET"
             )
             if client_secret is None:
-                raise CredentialError("Missing client secret")
+                raise CredentialError("Missing client secret, status code: 400")
             return cls.from_client_id(
                 client_id=client_id,
                 client_secret=client_secret,
@@ -444,7 +447,7 @@ class FusionCredentials:
 
     def _gen_fusion_token(self, url: str) -> Optional[Tuple[str, Optional[int]]]:
         if not self.bearer_token:
-            raise CredentialError("Bearer token is missing")
+            raise CredentialError("Bearer token is missing, status code: 401")
 
         headers = {
             "Authorization": f"Bearer {self.bearer_token.token}",
@@ -453,7 +456,9 @@ class FusionCredentials:
 
         response = requests.get(url, headers=headers, proxies=self.http_proxies)
         if response.status_code != 200:
-            raise CredentialError(f"Error from endpoint: {response.text}")
+            raise CredentialError(
+                f"Error from endpoint (status code: {response.status_code}): {response.text}"
+            )
         res_json = response.json()
         token = res_json.get("access_token")
         expires_in = res_json.get("expires_in")
@@ -473,7 +478,7 @@ class FusionCredentials:
                 ret[k] = v
 
         if not self.bearer_token:
-            raise CredentialError("No bearer token set")
+            raise CredentialError("No bearer token set (status code: 401)")
         bearer_key, bearer_value = self.bearer_token.as_bearer_header()
 
         fusion_info = fusion_url_to_auth_url(url)

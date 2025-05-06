@@ -1,5 +1,6 @@
 import datetime
 import io
+import json
 import multiprocessing as mp
 import tempfile
 from pathlib import Path
@@ -303,10 +304,15 @@ def test_progress_update() -> None:
 def mock_fs_fusion() -> MagicMock:
     fs = MagicMock()
     fs.ls.side_effect = lambda path: {
-        "": ["catalog1", "catalog2"],
+        "catalog1": ["catalog1", "catalog2"],
+        "catalog2": ["catalog1", "catalog2"],
         "catalog1/datasets": ["dataset1", "dataset2"],
         "catalog2/datasets": ["dataset3"],
     }.get(path, [])
+
+    fs.cat.side_effect = lambda path: json.dumps({
+        "identifier": "dataset1"
+    }) if path == "catalog1/datasets/dataset1" else json.dumps({})
     return fs
 
 

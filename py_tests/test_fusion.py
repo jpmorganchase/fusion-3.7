@@ -1,5 +1,7 @@
 import datetime
 import json
+import logging
+import re
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
@@ -15,6 +17,8 @@ from pytest_mock import MockerFixture
 from fusion import Fusion
 from fusion.attributes import Attribute, Types
 from fusion.credentials import FusionCredentials
+from fusion.exceptions import CredentialError, FileFormatError
+from fusion.fusion import logger
 from fusion.utils import _normalise_dt_param, distribution_to_url
 
 
@@ -380,6 +384,34 @@ def test_list_datasets_contains_success(requests_mock: requests_mock.Mocker, fus
     expected_df = pd.DataFrame(expected_data["resources"])
 
     requests_mock.get(url, json=server_mock_data)
+    requests_mock.get(
+    f"{fusion_obj.root_url}catalogs/{new_catalog}/datasets/ONE",
+        json={
+            "identifier": "ONE",
+            "description": "some desc",
+            "category": ["FX"],
+            "region": ["US"],
+            "status": "active",
+            "title": None,
+            "containerType": None,
+            "coverageStartDate": None,
+            "coverageEndDate": None,
+            "type": None,
+        }
+    )
+
+    expected_df_exact_match = pd.DataFrame([{
+    "identifier": "ONE",
+    "title": None,
+    "containerType": None,
+    "region": ["US"],
+    "category": ["FX"],
+    "coverageStartDate": None,
+    "coverageEndDate": None,
+    "description": "some desc",
+    "status": "active",
+    "type": None
+    }])
 
     select_prod = "prod_a"
     prod_url = f"{fusion_obj.root_url}catalogs/{new_catalog}/productDatasets"
@@ -398,11 +430,11 @@ def test_list_datasets_contains_success(requests_mock: requests_mock.Mocker, fus
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, contains="ONE")
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
+    pd.testing.assert_frame_equal(test_df, expected_df_exact_match, check_like=True)
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, contains="ONE", id_contains=True)
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
+    pd.testing.assert_frame_equal(test_df, expected_df_exact_match, check_like=True)
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, product=select_prod)
     # Check if the dataframe is created correctly
@@ -711,6 +743,313 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     assert len(res) == 1
     assert res[0][0]
     assert "sample" in res[0][1]
+
+def test_download_no_access(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    dataset = "TEST_DATASET"
+    dt_str = "20200101"
+    file_format = "csv"
+
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
+
+    expected_data = {
+        "catalog": {
+            "@id": "my_catalog/",
+            "description": "my catalog",
+            "title": "my catalog",
+            "identifier": "my_catalog",
+        },
+        "title": "Test Dataset",
+        "identifier": "TEST_DATASET",
+        "category": ["category"],
+        "shortAbstract": "short abstract",
+        "description": "description",
+        "frequency": "Once",
+        "isInternalOnlyDataset": False,
+        "isThirdPartyData": True,
+        "isRestricted": False,
+        "isRawData": True,
+        "maintainer": "maintainer",
+        "source": "source",
+        "region": ["region"],
+        "publisher": "publisher",
+        "subCategory": ["subCategory"],
+        "tags": ["tag1", "tag2"],
+        "createdDate": "2020-05-05",
+        "modifiedDate": "2020-05-05",
+        "deliveryChannel": ["API"],
+        "language": "English",
+        "status": "Available",
+        "type": "Source",
+        "containerType": "Snapshot-Full",
+        "snowflake": "snowflake",
+        "complexity": "complexity",
+        "isImmutable": False,
+        "isMnpi": False,
+        "isPii": False,
+        "isPci": False,
+        "isClient": False,
+        "isPublic": False,
+        "isInternal": False,
+        "isConfidential": False,
+        "isHighlyConfidential": False,
+        "isActive": False,
+        "@id": "TEST_DATASET/",
+    }
+
+    requests_mock.get(url, json=expected_data)
+
+    with pytest.raises(
+        CredentialError, match="You are not subscribed to TEST_DATASET in catalog my_catalog. Please request access."
+    ):
+        fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
+
+
+def test_download_format_not_available(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    dataset = "TEST_DATASET"
+    dt_str = "20200101"
+    file_format = "pdf"
+
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
+
+    expected_data = {
+        "catalog": {
+            "@id": "my_catalog/",
+            "description": "my catalog",
+            "title": "my catalog",
+            "identifier": "my_catalog",
+        },
+        "title": "Test Dataset",
+        "identifier": "TEST_DATASET",
+        "category": ["category"],
+        "shortAbstract": "short abstract",
+        "description": "description",
+        "frequency": "Once",
+        "isInternalOnlyDataset": False,
+        "isThirdPartyData": True,
+        "isRestricted": False,
+        "isRawData": True,
+        "maintainer": "maintainer",
+        "source": "source",
+        "region": ["region"],
+        "publisher": "publisher",
+        "subCategory": ["subCategory"],
+        "tags": ["tag1", "tag2"],
+        "createdDate": "2020-05-05",
+        "modifiedDate": "2020-05-05",
+        "deliveryChannel": ["API"],
+        "language": "English",
+        "status": "Subscribed",
+        "type": "Source",
+        "containerType": "Snapshot-Full",
+        "snowflake": "snowflake",
+        "complexity": "complexity",
+        "isImmutable": False,
+        "isMnpi": False,
+        "isPii": False,
+        "isPci": False,
+        "isClient": False,
+        "isPublic": False,
+        "isInternal": False,
+        "isConfidential": False,
+        "isHighlyConfidential": False,
+        "isActive": False,
+        "@id": "TEST_DATASET/",
+    }
+
+    requests_mock.get(url, json=expected_data)
+
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
+
+    expected_resp = {
+        "lastModified": "2025-03-18T09:04:22Z",
+        "checksum": "SHA-256=vFdIF:HSLDBV:VBLHD/xe8Mom9yqooZA=-1",
+        "metadata": {
+            "fields": [
+                "lastModified",
+                "size",
+                "checksum",
+                "catalog",
+                "dataset",
+                "seriesMember",
+                "distribution",
+                "storageProvider",
+                "version",
+            ]
+        },
+        "datasets": [
+            {
+                "key": "TEST_DATASET",
+                "lastModified": "2025-03-18T09:04:22Z",
+                "checksum": "SHA-256=vSLKFGNSDFGJBADFGsjfgl/xe8Mom9yqooZA=-1",
+                "distributions": [
+                    {
+                        "key": "TEST_DATASET/20250317/distribution.csv",
+                        "values": [
+                            "2025-03-18T09:04:22Z",
+                            "3054",
+                            "SHA-256=vlfaDJFb:VbSdfOHLvnL/xe8Mom9yqooZA=-1",
+                            "my_catalog",
+                            "TEST_DATASET",
+                            "20250317",
+                            "csv",
+                            "api-bucket",
+                            "SJLDHGF;eflSBVLS",
+                        ],
+                    },
+                    {
+                        "key": "TEST_DATASET/20250317/distribution.parquet",
+                        "values": [
+                            "2025-03-18T09:04:19Z",
+                            "3076",
+                            "SHA-256=7yfQDQq/M1VE4S0SKJDHfblDHFVBldvLXlv5Q=-1",
+                            "my_catalog",
+                            "TEST_DATASET",
+                            "20250317",
+                            "parquet",
+                            "api-bucket",
+                            "SJDFB;IUEBRF;dvbuLSDVc",
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+
+    requests_mock.get(url, json=expected_resp)
+
+    with pytest.raises(
+        FileFormatError,
+        match=re.escape(
+            "Dataset format pdf is not available for TEST_DATASET in catalog my_catalog. "
+            "Available formats are ['csv', 'parquet']."
+        ),
+    ):
+        fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
+
+
+def test_download_multiple_format_error(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    dataset = "TEST_DATASET"
+    dt_str = "20200101"
+
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
+
+    expected_data = {
+        "catalog": {
+            "@id": "my_catalog/",
+            "description": "my catalog",
+            "title": "my catalog",
+            "identifier": "my_catalog",
+        },
+        "title": "Test Dataset",
+        "identifier": "TEST_DATASET",
+        "category": ["category"],
+        "shortAbstract": "short abstract",
+        "description": "description",
+        "frequency": "Once",
+        "isInternalOnlyDataset": False,
+        "isThirdPartyData": True,
+        "isRestricted": False,
+        "isRawData": True,
+        "maintainer": "maintainer",
+        "source": "source",
+        "region": ["region"],
+        "publisher": "publisher",
+        "subCategory": ["subCategory"],
+        "tags": ["tag1", "tag2"],
+        "createdDate": "2020-05-05",
+        "modifiedDate": "2020-05-05",
+        "deliveryChannel": ["API"],
+        "language": "English",
+        "status": "Subscribed",
+        "type": "Source",
+        "containerType": "Snapshot-Full",
+        "snowflake": "snowflake",
+        "complexity": "complexity",
+        "isImmutable": False,
+        "isMnpi": False,
+        "isPii": False,
+        "isPci": False,
+        "isClient": False,
+        "isPublic": False,
+        "isInternal": False,
+        "isConfidential": False,
+        "isHighlyConfidential": False,
+        "isActive": False,
+        "@id": "TEST_DATASET/",
+    }
+
+    requests_mock.get(url, json=expected_data)
+
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
+
+    expected_resp = {
+        "lastModified": "2025-03-18T09:04:22Z",
+        "checksum": "SHA-256=vFdIF:HSLDBV:VBLHD/xe8Mom9yqooZA=-1",
+        "metadata": {
+            "fields": [
+                "lastModified",
+                "size",
+                "checksum",
+                "catalog",
+                "dataset",
+                "seriesMember",
+                "distribution",
+                "storageProvider",
+                "version",
+            ]
+        },
+        "datasets": [
+            {
+                "key": "TEST_DATASET",
+                "lastModified": "2025-03-18T09:04:22Z",
+                "checksum": "SHA-256=vSLKFGNSDFGJBADFGsjfgl/xe8Mom9yqooZA=-1",
+                "distributions": [
+                    {
+                        "key": "TEST_DATASET/20250317/distribution.csv",
+                        "values": [
+                            "2025-03-18T09:04:22Z",
+                            "3054",
+                            "SHA-256=vlfaDJFb:VbSdfOHLvnL/xe8Mom9yqooZA=-1",
+                            "my_catalog",
+                            "TEST_DATASET",
+                            "20250317",
+                            "csv",
+                            "api-bucket",
+                            "SJLDHGF;eflSBVLS",
+                        ],
+                    },
+                    {
+                        "key": "TEST_DATASET/20250317/distribution.parquet",
+                        "values": [
+                            "2025-03-18T09:04:19Z",
+                            "3076",
+                            "SHA-256=7yfQDQq/M1VE4S0SKJDHfblDHFVBldvLXlv5Q=-1",
+                            "my_catalog",
+                            "TEST_DATASET",
+                            "20250317",
+                            "parquet",
+                            "api-bucket",
+                            "SJDFB;IUEBRF;dvbuLSDVc",
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+
+    requests_mock.get(url, json=expected_resp)
+
+    with pytest.raises(
+        FileFormatError,
+        match=re.escape(
+            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to download. "
+            "Available formats are ['csv', 'parquet']."
+        ),
+    ):
+        fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=None, catalog=catalog)
 
 def test_to_df(fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
@@ -1636,6 +1975,60 @@ def test_fusion_output_dataflow(fusion_obj: Fusion) -> None:
     assert test_output_dataflow.consumer_application_id == [{"id": "12345", "type": "Application (SEAL)"}]
     assert test_output_dataflow.flow_details == {"flowDirection": "Output"}
     assert test_output_dataflow.client == fusion_obj
+
+def test_fusion_init_logging_to_specified_file(credentials: FusionCredentials, tmp_path: str) -> None:
+    log_path = tmp_path / "custom_log_folder"
+    if not log_path.exists():
+        log_path.mkdir(parents=True)
+
+    # Clear handlers to avoid test contamination
+    logger.handlers.clear()
+
+    Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
+
+    # Check that StreamHandler and FileHandler were added
+    assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+    assert any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+
+    # Confirm log file exists
+    log_file = log_path / "fusion_sdk.log"
+    assert log_file.exists()
+
+    # Clean up for other tests
+    logger.handlers.clear()
+
+
+def test_fusion_init_logging_enabled_to_stdout_and_file(credentials: FusionCredentials, tmp_path: str) -> None:
+    log_path = tmp_path / "logs"
+    if not log_path.exists():
+        log_path.mkdir(parents=True)
+
+    # Clear logger handlers to avoid contamination
+    logger.handlers.clear()
+
+    Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
+
+    # Ensure the logger is configured with both handlers
+    assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
+    assert any(isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+
+    # Verify the log file exists
+    log_file = log_path / "fusion_sdk.log"
+    assert log_file.exists()
+
+    logger.handlers.clear()
+
+
+def test_fusion_init_logging_disabled(credentials: FusionCredentials) -> None:
+    logger.handlers.clear()
+
+    Fusion(credentials=credentials, enable_logging=False)
+
+    assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
+    assert all(not isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+
+    logger.handlers.clear()
+
 
 
 

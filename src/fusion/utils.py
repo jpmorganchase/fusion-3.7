@@ -23,7 +23,6 @@ import joblib
 import pandas as pd
 import requests
 from dateutil import parser
-from joblib import Parallel, delayed
 from tqdm import tqdm
 from urllib3.util.retry import Retry
 
@@ -75,6 +74,8 @@ RECOGNIZED_FORMATS = [
     "mp4",
     "mov",
     "mkv",
+    "gz",
+    "xml",
 ]
 
 re_str_1 = re.compile("(.)([A-Z][a-z]+)")
@@ -385,20 +386,22 @@ def validate_file_names(paths: List[str], fs_fusion: fsspec.AbstractFileSystem) 
     """
     file_names = [i.split("/")[-1].split(".")[0] for i in paths]
     validation = []
-    all_catalogs = fs_fusion.ls("")
-    all_datasets = {}
     file_seg_cnt = 3
     for i, f_n in enumerate(file_names):
         tmp = f_n.split("__")
         if len(tmp) == file_seg_cnt:
-            val = tmp[1] in all_catalogs
+            try:
+                val = tmp[1] in [i.split("/")[0] for i in fs_fusion.ls(tmp[1])]
+            except FileNotFoundError:
+                val = False
             if not val:
                 validation.append(False)
             else:
-                if tmp[1] not in all_datasets:
-                    all_datasets[tmp[1]] = [i.split("/")[-1] for i in fs_fusion.ls(f"{tmp[1]}/datasets")]
-
-                val = tmp[0] in all_datasets[tmp[1]]
+                # check if dataset exists
+                try:
+                    val = tmp[0] in js.loads(fs_fusion.cat(f"{tmp[1]}/datasets/{tmp[0]}"))["identifier"]
+                except Exception:  # noqa: BLE001
+                    val = False
                 validation.append(val)
         else:
             validation.append(False)
@@ -490,9 +493,12 @@ def upload_files(  # noqa: PLR0913
 
     def _upload(p_url: str, path: str, file_name: str | None = None) -> tuple[bool, str, str | None]:
         try:
-            mp = multipart and fs_local.size(path) > chunk_size
-
+            
             if isinstance(fs_local, BytesIO):
+                fs_local.seek(0, 2)
+                size_in_bytes = fs_local.tell()
+                mp = multipart and size_in_bytes > chunk_size
+                fs_local.seek(0)
                 fs_fusion.put(
                     fs_local,
                     p_url,
@@ -505,6 +511,7 @@ def upload_files(  # noqa: PLR0913
                     additional_headers=additional_headers,
                 )
             else:
+                mp = multipart and fs_local.size(path) > chunk_size
                 with fs_local.open(path, "rb") as file_local:
                     fs_fusion.put(
                         file_local,
@@ -526,27 +533,16 @@ def upload_files(  # noqa: PLR0913
             )
             return (False, path, str(ex))
 
-    if parallel:
-        if show_progress:
-            with tqdm_joblib(tqdm(total=len(loop))) as _:
-                res = Parallel(n_jobs=n_par, backend="threading")(
-                    delayed(_upload)(row["url"], row["path"]) for _, row in loop.iterrows()
-                )
-        else:
-            res = Parallel(n_jobs=n_par, backend="threading")(
-                delayed(_upload)(row["url"], row["path"]) for _, row in loop.iterrows()
-            )
+    res = [None] * len(loop)
+    if show_progress:
+        with tqdm(total=len(loop)) as p:
+            for i, (_, row) in enumerate(loop.iterrows()):
+                r = _upload(row["url"], row["path"])
+                res[i] = r
+                if r[0] is True:
+                    p.update(1)
     else:
-        res = [None] * len(loop)
-        if show_progress:
-            with tqdm(total=len(loop)) as p:
-                for i, (_, row) in enumerate(loop.iterrows()):
-                    r = _upload(row["url"], row["path"])
-                    res[i] = r
-                    if r[0] is True:
-                        p.update(1)
-        else:
-            res = [_upload(row["url"], row["path"]) for _, row in loop.iterrows()]
+        res = [_upload(row["url"], row["path"]) for _, row in loop.iterrows()]
 
     return res  # type: ignore
 
@@ -655,12 +651,10 @@ def _is_json(data: str) -> bool:
 
 def requests_raise_for_status(response: requests.Response) -> None:
     """Send response text into raise for status."""
-    if response.status_code == requests.codes.not_found:  # noqa: PLR2004
+   
+    real_reason = ""
+    try:
+        real_reason = response.text
+        response.reason = real_reason
+    finally:
         response.raise_for_status()
-    else:
-        real_reason = ""
-        try:
-            real_reason = response.text
-            response.reason = real_reason
-        finally:
-            response.raise_for_status()

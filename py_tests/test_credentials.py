@@ -3,8 +3,10 @@ import os
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import MagicMock, patch
 
 import pytest
+import requests_mock
 
 from fusion.credentials import (
     AuthToken,
@@ -309,3 +311,58 @@ def test_fusion_url_to_auth_url_missing_catalogs_segment() -> None:
     url = "http://example.com/datasets/my_dataset/distributions"
     with pytest.raises(CredentialError):
         fusion_url_to_auth_url(url)
+
+@patch("fusion.credentials.fusion_url_to_auth_url", return_value=("https://fusion.example.com/token", "cat", "ds"))
+def test_get_fusion_token_headers_raises_without_bearer(
+    mock_url_parser: MagicMock,
+    sample_credentials: FusionCredentials,
+) -> None:
+    # Setup mock response for token request
+    with requests_mock.Mocker() as mock:
+        # Mock both the fusion and auth token URLs
+        mock.get("https://fusion.example.com/token", json={"access_token": "mock_token", "expires_in": 3600})
+        mock.post("https://auth.example.com/token", json={"access_token": "mock_token", "expires_in": 3600})
+
+        # Now call the method that would trigger the HTTP request
+        headers = sample_credentials.get_fusion_token_headers("https://example.com/distributions/data.csv")
+
+        # Check if the mock token was added in headers
+    assert "Fusion-Authorization" in headers
+    assert headers["Fusion-Authorization"].startswith("Bearer ")
+
+@patch("fusion.credentials.fusion_url_to_auth_url", return_value=None)
+def test_get_fusion_token_headers_no_fusion_token(
+    mock_url_parser: MagicMock,
+    sample_credentials: FusionCredentials,
+) -> None:
+    sample_credentials.put_bearer_token("test_token", 3600)
+    headers = sample_credentials.get_fusion_token_headers("https://example.com/resource")
+    assert "Authorization" in headers
+    assert headers["Authorization"] == "Bearer test_token"
+    assert headers["User-Agent"].startswith("fusion-python-sdk")
+
+@patch("fusion.credentials.fusion_url_to_auth_url", return_value=("https://fusion.example.com/token", "cat", "ds"))
+def test_get_fusion_token_headers_adds_fusion_token(
+    mock_url_parser: MagicMock,
+    sample_credentials: FusionCredentials,
+) -> None:
+    sample_credentials.put_bearer_token("test_token", 3600)
+    # No existing fusion token, should trigger generation
+    with patch.object(sample_credentials, "_gen_fusion_token", return_value=("fusion_token", 3600)) as mock_gen:
+        headers = sample_credentials.get_fusion_token_headers("https://example.com/distributions/data.csv")
+        assert headers["Authorization"] == "Bearer test_token"
+        assert any("fusion" in k.lower() for k in headers), "Expected a fusion-related token header key"
+        assert any(
+    "fusion_token" in v or "Bearer fusion_token" in v
+    for v in headers.values()
+), "Expected fusion token value in headers"
+        mock_gen.assert_called_once()
+
+def test_get_fusion_token_expires_in(sample_credentials: FusionCredentials) -> None:
+    sample_credentials.put_fusion_token("my_dataset", "my_token", 3600)
+    remaining = sample_credentials.get_fusion_token_expires_in("my_dataset")
+    assert remaining is not None
+    assert remaining <= 3600
+
+def test_get_fusion_token_expires_in_none(sample_credentials: FusionCredentials) -> None:
+    assert sample_credentials.get_fusion_token_expires_in("nonexistent_key") is None

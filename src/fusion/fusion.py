@@ -899,6 +899,11 @@ class Fusion:
             local_file_validation = validate_file_names(file_path_lst, fs_fusion)
             file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
             file_name = [f.split("/")[-1] for f in file_path_lst]
+            
+            if preserve_original_name:
+                from .fusion_filesystem import _sanitize_filename
+                file_name = [_sanitize_filename(f) for f in file_name]
+                
             is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
             local_url_eqiv = [path_to_url(i, r) for i, r in zip(file_path_lst, is_raw_lst)]
         else:
@@ -939,6 +944,12 @@ class Fusion:
                     return [(False, path, msg)]
                 file_format = path.split(".")[-1]
                 file_name = [path.split("/")[-1]]
+                
+                # If preserving original name, sanitize it
+                if preserve_original_name:
+                    from .fusion_filesystem import _sanitize_filename
+                    file_name = [_sanitize_filename(f) for f in file_name]
+                    
                 file_format = "raw" if file_format not in RECOGNIZED_FORMATS else file_format
 
                 local_url_eqiv = [
@@ -1022,6 +1033,10 @@ class Fusion:
 
         is_raw = js.loads(fs_fusion.cat(f"{catalog}/datasets/{dataset}"))["isRawData"]
         local_url_eqiv = path_to_url(f"{dataset}__{catalog}__{series_member}.{distribution}", is_raw)
+
+        if file_name:
+            from .fusion_filesystem import _sanitize_filename
+            file_name = _sanitize_filename(file_name)
 
         data_map_df = pd.DataFrame(["", local_url_eqiv, file_name]).T
         data_map_df.columns = ["path", "url", "file_name"]  # type: ignore

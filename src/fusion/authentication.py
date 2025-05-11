@@ -28,7 +28,23 @@ def _is_url(url: str) -> bool:
     """
     try:
         parsed = urlparse(url)
-        return all([parsed.scheme, parsed.netloc])
+        if not parsed.scheme or not parsed.netloc:
+            return False
+            
+        if parsed.scheme not in ["http", "https"]:
+            return False
+            
+        hostname = parsed.netloc.split(":")[0]
+        if (hostname == "localhost" or 
+            hostname == "127.0.0.1" or 
+            hostname.startswith("192.168.") or
+            hostname.startswith("10.") or
+            hostname.startswith("172.16.") or
+            hostname.startswith("fd") or
+            hostname.endswith(".local")):
+            return False
+            
+        return True
     except (ValueError, AttributeError):
         return False
 

@@ -30,6 +30,21 @@ VERBOSE_LVL = 25
 DEFAULT_CHUNK_SIZE = 5 * 2 ** 20
 
 
+def _sanitize_filename(filename: str) -> str:
+    """Sanitize filename to prevent path traversal.
+    
+    Args:
+        filename (str): The filename to sanitize
+        
+    Returns:
+        str: Sanitized filename with path traversal sequences removed
+    """
+    if not filename:
+        return filename
+        
+    return Path(filename).name
+
+
 class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
     """Fusion HTTP filesystem."""
 
@@ -601,7 +616,8 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
                 "x-jpmc-file-name" in headers.keys() and preserve_original_name  # noqa: SIM118
             ):  # noqa: SIM118
                 file_name = headers.get("x-jpmc-file-name")
-                lpath = Path(lpath).parent.joinpath(file_name)
+                safe_file_name = _sanitize_filename(file_name)
+                lpath = Path(lpath).parent.joinpath(safe_file_name)
                 if not overwrite and lfs.exists(lpath):
                     return True, lpath, None
         except Exception as ex:  # noqa: BLE001
@@ -786,6 +802,20 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
         multipart: bool = False,
         file_name: Optional[str] = None,
     ) -> Tuple[Dict[str, str], List[Dict[str, str]]]:
+        """Construct headers for upload.
+
+        Args:
+            file_local (Any): File-like object
+            dt_from (str): From date
+            dt_to (str): To date
+            dt_created (str): Created date
+            chunk_size (int, optional): Chunk size. Defaults to 5 * 2 ** 20.
+            multipart (bool, optional): Is multipart upload. Defaults to False.
+            file_name (Optional[str], optional): File name. Defaults to None.
+
+        Returns:
+            Tuple[Dict[str, str], List[Dict[str, str]]]: Headers and chunk headers
+        """
         headers = {
             "Content-Type": "application/octet-stream",
             "x-jpmc-distribution-created-date": dt_created,
@@ -794,7 +824,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             "Digest": "",  # to be changed to x-jpmc-digest
         }
         if file_name:
-            headers["File-Name"] = file_name
+            headers["File-Name"] = _sanitize_filename(file_name)
 
         headers["Content-Type"] = (
             "application/json" if multipart else headers["Content-Type"]

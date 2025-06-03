@@ -1,5 +1,7 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
 from __future__ import annotations
+from typing import Optional, List, Dict, Union  # Make sure this is imported
+from typing_extensions import TypedDict  # Needed in 3.7 since TypedDict wasn't in stdlib yet
 
 import copy
 import json as js
@@ -15,6 +17,8 @@ import pandas as pd
 from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
+
+from fusion.report_attributes import ReportAttribute, ReportAttributes
 
 from .attributes import Attribute, Attributes
 from .credentials import FusionCredentials
@@ -208,6 +212,67 @@ class Fusion:
             asynchronous=as_async,
             client_kwargs={"root_url": self.root_url, "credentials": self.credentials}
             )
+    
+    
+    def report_attribute(
+        self,
+        name: str,
+        title: str,
+        description: Optional[str] = None,
+        technicalDataType: Optional[str] = None,
+        path: Optional[str] = None,
+        dataPublisher: Optional[str] = None,
+    ) -> ReportAttribute:
+        """Instantiate a ReportAttribute object with this client for metadata creation."""
+        attribute_obj = ReportAttribute(
+            name=name,
+            title=title,
+            description=description,
+            technicalDataType=technicalDataType,
+            path=path,
+            dataPublisher=dataPublisher,
+        )
+        attribute_obj.client = self
+        return attribute_obj
+
+
+    def report_attributes(
+        self,
+        attributes: Optional[List[ReportAttribute]] = None,
+    ) -> ReportAttributes:
+        """Instantiate a ReportAttributes collection with this client for managing multiple attributes."""
+        attributes_obj = ReportAttributes(attributes=attributes or [])
+        attributes_obj.client = self
+        return attributes_obj
+
+
+    class AttributeTermMapping(TypedDict):
+        attribute: Dict[str, str]
+        term: Dict[str, str]
+        isKDE: bool
+
+
+    def link_attributes_to_terms(
+        self,
+        report_id: str,
+        mappings: List[AttributeTermMapping],
+        return_resp_obj: bool = False,
+    ) -> Optional["requests.Response"]:
+        """
+        Links attributes to business terms for a report using pre-formatted mappings.
+        """
+        # Basic validation
+        for i, m in enumerate(mappings):
+            if not isinstance(m, dict):
+                raise ValueError(f"Mapping at index {i} is not a dictionary.")
+            if not ("attribute" in m and "term" in m and "isKDE" in m):
+                raise ValueError(f"Mapping at index {i} must include 'attribute', 'term', and 'isKDE'.")
+
+        url = f"{self.get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
+        response = self.session.post(url, json=mappings)
+        requests_raise_for_status(response)
+
+        return response if return_resp_obj else None
 
     def list_catalogs(self, output: bool = False) -> pd.DataFrame:
         """Lists the catalogs available to the API account.

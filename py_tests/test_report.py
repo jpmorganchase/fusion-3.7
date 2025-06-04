@@ -1,11 +1,6 @@
 """Test file for report.py"""
 
-import pytest
-import requests
-import requests_mock
 
-from fusion.fusion import Fusion
-from fusion.report import Report
 
 
 # def test_report_class_object_representation() -> None:

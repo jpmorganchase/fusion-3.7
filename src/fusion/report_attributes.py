@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, List, Dict, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
+
 import pandas as pd
 
 from fusion.utils import (
@@ -10,6 +11,7 @@ from fusion.utils import (
 
 if TYPE_CHECKING:
     import requests
+
     from fusion import Fusion
 
 

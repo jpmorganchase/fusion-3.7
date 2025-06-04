@@ -16,6 +16,7 @@ from .utils import (
 
 if TYPE_CHECKING:
     import requests
+
     from fusion import Fusion
 
 

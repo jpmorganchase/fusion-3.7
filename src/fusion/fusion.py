@@ -1,7 +1,5 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
 from __future__ import annotations
-from typing import Optional, List, Dict, Union  # Make sure this is imported
-from typing_extensions import TypedDict  # Needed in 3.7 since TypedDict wasn't in stdlib yet
 
 import copy
 import json as js
@@ -11,12 +9,13 @@ import sys
 import warnings
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union  # Make sure this is imported
 
 import pandas as pd
 from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
+from typing_extensions import TypedDict  # Needed in 3.7 since TypedDict wasn't in stdlib yet
 
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 
@@ -257,7 +256,7 @@ class Fusion:
         report_id: str,
         mappings: List[AttributeTermMapping],
         return_resp_obj: bool = False,
-    ) -> Optional["requests.Response"]:
+    ) -> Optional[requests.Response]:
         """
         Links attributes to business terms for a report using pre-formatted mappings.
         """

@@ -1558,151 +1558,103 @@ class Fusion:
         if output:
             pass
         return ds_attr_df
-
+    
     def report(  # noqa: PLR0913
-            self,
-            identifier: str,
-            title: str = "",
-            category: Union[str, List[str], None] = None,
-            description: str = "",
-            frequency: str = "Once",
-            is_internal_only_dataset: bool = False,
-            is_third_party_data: bool = True,
-            is_restricted: Optional[bool] = None,
-            is_raw_data: bool = True,
-            maintainer: Optional[str] = "J.P. Morgan Fusion",
-            source: Union[str, List[str], None] = None,
-            region: Union[str, List[str], None] = None,
-            publisher: str = "J.P. Morgan",
-            product: Union[str, List[str], None] = None,
-            sub_category: Union[str, List[str], None] = None,
-            tags: Union[str, List[str], None] = None,
-            created_date: Optional[str] = None,
-            modified_date: Optional[str] = None,
-            delivery_channel: Union[str, List[str]] = "API",
-            language: str = "English",
-            status: str = "Available",
-            type_: Optional[str] = "Report",
-            container_type: Optional[str] = "Snapshot-Full",
-            snowflake: Optional[str] = None,
-            complexity: Optional[str] = None,
-            is_immutable: Optional[bool] = None,
-            is_mnpi: Optional[bool] = None,
-            is_pci: Optional[bool] = None,
-            is_pii: Optional[bool] = None,
-            is_client: Optional[bool] = None,
-            is_public: Optional[bool] = None,
-            is_internal: Optional[bool] = None,
-            is_confidential: Optional[bool] = None,
-            is_highly_confidential: Optional[bool] = None,
-            is_active: Optional[bool] = None,
-            owners: Optional[List[str]] = None,
-            application_id: Union[str, Dict[str, str], None] = None,
-            report: Optional[Dict[str, str]] = None,
-            **kwargs: Any,
-        ) -> Report:
-            """Instantiate Report object with this client for metadata creation
-            for managing regulatory reporting metadata.
+        self,
+        name: str,
+        tier_type: str,
+        lob: str,
+        data_node_id: dict[str, str],
+        alternative_id: dict[str, str],
+        title: str | None = None,
+        alternate_id: str | None = None,
+        description: str | None = None,
+        frequency: str | None = None,
+        category: str | None = None,
+        sub_category: str | None = None,
+        report_inventory_name: str | None = None,
+        report_inventory_id: str | None = None,
+        report_owner: str | None = None,
+        sub_lob: str | None = None,
+        is_bcbs239_program: bool | None = None,
+        risk_area: str | None = None,
+        risk_stripe: str | None = None,
+        sap_code: str | None = None,
+        sourced_object: str | None = None,
+        domain: dict[str, str | bool] | None = None,
+        data_model_id: dict[str, str] | None = None,
+        **kwargs: Any
+    ) -> Report:
+        """Instantiate a Report object with this client for metadata creation.
 
-            Args:
-                identifier (str): Dataset identifier.
-                title (str, optional): Dataset title. If not provided, defaults to identifier.
-                category (Union[str, List[str], None], optional): A category or list of categories for the dataset.
-                    Defaults to None.
-                description (str, optional): Dataset description. If not provided, defaults to identifier.
-                frequency (str, optional): The frequency of the dataset. Defaults to "Once".
-                is_internal_only_dataset (bool, optional): Flag for internal datasets. Defaults to False.
-                is_third_party_data (bool, optional): Flag for third party data. Defaults to True.
-                is_restricted (Optional[bool], optional): Flag for restricted datasets. Defaults to None.
-                is_raw_data (bool, optional): Flag for raw datasets. Defaults to True.
-                maintainer (Optional[str], optional): Dataset maintainer. Defaults to "J.P. Morgan Fusion".
-                source (Union[str, List[str], None], optional): Name of data vendor which provided the data.
-                    Defaults to None.
-                region (Union[str, List[str], None], optional): Region. Defaults to None.
-                publisher (str, optional): Name of vendor that publishes the data. Defaults to "J.P. Morgan".
-                product (Union[str, List[str], None], optional): Product to associate dataset with. Defaults to None.
-                sub_category (Union[str, List[str], None], optional): Sub-category. Defaults to None.
-                tags (Union[str, List[str], None], optional): Tags used for search purposes. Defaults to None.
-                created_date (Optional[str], optional): Created date. Defaults to None.
-                modified_date (Optional[str], optional): Modified date. Defaults to None.
-                delivery_channel (Union[str, List[str]], optional): Delivery channel. Defaults to "API".
-                language (str, optional): Language. Defaults to "English".
-                status (str, optional): Status. Defaults to "Available".
-                type_ (Optional[str], optional): Dataset type. Defaults to "Source".
-                container_type (Optional[str], optional): Container type. Defaults to "Snapshot-Full".
-                snowflake (Optional[str], optional): Snowflake account connection. Defaults to None.
-                complexity (Optional[str], optional): Complexity. Defaults to None.
-                is_immutable (Optional[bool], optional): Flag for immutable datasets. Defaults to None.
-                is_mnpi (Optional[bool], optional): is_mnpi. Defaults to None.
-                is_pci (Optional[bool], optional): is_pci. Defaults to None.
-                is_pii (Optional[bool], optional): is_pii. Defaults to None.
-                is_client (Optional[bool], optional): is_client. Defaults to None.
-                is_public (Optional[bool], optional): is_public. Defaults to None.
-                is_internal (Optional[bool], optional): is_internal. Defaults to None.
-                is_confidential (Optional[bool], optional): is_confidential. Defaults to None.
-                is_highly_confidential (Optional[bool], optional): is_highly_confidential. Defaults to None.
-                is_active (Optional[bool], optional): is_active. Defaults to None.
-                owners (Optional[List[str]], optional): The owners of the dataset. Defaults to None.
-                application_id (Union[str, Dict[str, str], None], optional): The application ID of the dataset.
-                    Defaults to None.
-                report (Optional[Dict[str, str]], optional): The report metadata. Specifies the tier of the report.
-                    Required for registered reports to the catalog.
+        Args:
+            name (str): Name of the report.
+            tier_type (str): Tier type classification.
+            alternate_id (str): Alternate ID used to identify the report.
+            data_node_id (dict[str, str]): Associated data node identifier (as a dictionary).
+            title (str, optional): Report title.
+            frequency (str, optional): Frequency of the report.
+            category (str, optional): High-level category of the report.
+            sub_category (str, optional): Sub-category of the report.
+            report_inventory_name (str, optional): Inventory name for internal tracking.
+            report_owner (str, optional): Name of the report owner.
+            lob (str, optional): Line of business.
+            sub_lob (str, optional): Sub line of business.
+            is_bcbs239_program (bool, optional): Flag for BCBS 239 compliance. Defaults to False.
+            risk_area (str, optional): Risk area associated with the report.
+            riskstripe (str, optional): Riskstripe code.
+            sap_code (str, optional): SAP code.
+            domain (str, optional): Domain classification.
+            sourced_object (str, optional): Source object reference.
+            alternative_id (dict[str, str], optional): Alternate identifiers map.
+            data_model_id (dict[str, str], optional): Associated data model.
+            d (str, optional): Unique identifier for the report.
+            description (str, optional): Description of the report.
+            report_inventory_id (str, optional): Internal report inventory ID.
+            created_service (str, optional): Originating service name.
+            originator_firm_id (str, optional): ID of the originating firm.
+            is_instance (bool, optional): Whether this is a report instance.
+            version (str, optional): Version of the report.
+            status (str, optional): Status of the report.
+            created_by (str, optional): Creator's identifier.
+            created_datetime (str, optional): Timestamp of creation.
+            modified_by (str, optional): Last modifier's identifier.
+            modified_datetime (str, optional): Timestamp of last modification.
+            approved_by (str, optional): Approver's identifier.
+            approved_datetime (str, optional): Timestamp of approval.
+            kwargs (Any): Additional fields.
 
-            Returns:
-                Report: Fusion Report class.
+        Returns:
+            Report: Fusion Report class instance.
+        """
+        report_obj = Report(
+            name=name,
+            tier_type=tier_type,
+            lob=lob,
+            data_node_id=data_node_id,
+            alternative_id=alternative_id,
+            title=title,
+            alternate_id=alternate_id,
+            description=description,
+            frequency=frequency,
+            category=category,
+            sub_category=sub_category,
+            report_inventory_name=report_inventory_name,
+            report_inventory_id=report_inventory_id,
+            report_owner=report_owner,
+            sub_lob=sub_lob,
+            is_bcbs239_program=is_bcbs239_program,
+            risk_area=risk_area,
+            risk_stripe=risk_stripe,
+            sap_code=sap_code,
+            sourced_object=sourced_object,
+            domain=domain,
+            data_model_id=data_model_id,
+            **kwargs,
+        )
+        report_obj.client = self
+        return report_obj
 
-            Examples:
-                >>> from fusion37 import Fusion
-                >>> fusion = Fusion()
-                >>> dataset = fusion.report(identifier="DATASET_1")
-
-            Note:
-                See the dataset module for more information on functionalities of report objects.
-
-            """
-            report_obj = Report(
-                identifier=identifier,
-                title=title,
-                category=category,
-                description=description,
-                frequency=frequency,
-                is_internal_only_dataset=is_internal_only_dataset,
-                is_third_party_data=is_third_party_data,
-                is_restricted=is_restricted,
-                is_raw_data=is_raw_data,
-                maintainer=maintainer,
-                source=source,
-                region=region,
-                publisher=publisher,
-                product=product,
-                sub_category=sub_category,
-                tags=tags,
-                created_date=created_date,
-                modified_date=modified_date,
-                delivery_channel=delivery_channel,
-                language=language,
-                status=status,
-                type_=type_,
-                container_type=container_type,
-                snowflake=snowflake,
-                complexity=complexity,
-                is_immutable=is_immutable,
-                is_mnpi=is_mnpi,
-                is_pci=is_pci,
-                is_pii=is_pii,
-                is_client=is_client,
-                is_public=is_public,
-                is_internal=is_internal,
-                is_confidential=is_confidential,
-                is_highly_confidential=is_highly_confidential,
-                is_active=is_active,
-                owners=owners,
-                application_id=application_id,
-                report=report,
-                **kwargs,
-            )
-            report_obj.client = self
-            return report_obj
 
     def input_dataflow(  # noqa: PLR0913
         self,

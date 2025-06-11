@@ -162,7 +162,7 @@ class ReportAttributes:
         return_resp_obj: bool = False,
     ) -> Optional["requests.Response"]:
         client = self._use_client(client)
-        url = f"{client.get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements"
+        url = f"{client._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements"
         payload = [attr.to_dict() for attr in self.attributes]
         resp = client.session.post(url, json=payload)
         requests_raise_for_status(resp)

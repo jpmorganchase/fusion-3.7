@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
+from typing_extensions import TypedDict
 
 from .utils import (
     CamelCaseMeta,
@@ -143,7 +144,7 @@ class Report(metaclass=CamelCaseMeta):
         return resp if return_resp_obj else None
     
     class AttributeTermMapping(TypedDict):
-        attribute: Dict[str, str]
+        attribute: Dict[str, str]       
         term: Dict[str, str]
         isKDE: bool
 

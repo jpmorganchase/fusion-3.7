@@ -212,6 +212,31 @@ class Fusion:
             client_kwargs={"root_url": self.root_url, "credentials": self.credentials}
             )
     
+    def _get_new_root_url(self) -> str:
+        """
+        Returns a modified version of the root URL to support the new API format.
+
+        This method temporarily strips trailing segments such as "/api/v1/" or "/v1/"
+        from the original `root_url` to align with an updated API base path format.
+
+        Returns:
+            str: The adjusted root URL without trailing version segments.
+
+        Deprecated:
+            This method is temporary and will be removed once all components have migrated
+            to the new API structure. Use `root_url` and apply formatting externally
+            as needed.
+        """
+        new_root_url = self.root_url
+
+        if new_root_url:
+            if new_root_url.endswith("/api/v1/"):
+                new_root_url = new_root_url[:-8]  # remove "/api/v1/"
+            elif new_root_url.endswith("/v1/"):
+                new_root_url = new_root_url[:-4]  # remove "/v1/"
+
+        return new_root_url
+    
     
     def report_attribute(
         self,
@@ -267,7 +292,7 @@ class Fusion:
             if not ("attribute" in m and "term" in m and "isKDE" in m):
                 raise ValueError(f"Mapping at index {i} must include 'attribute', 'term', and 'isKDE'.")
 
-        url = f"{self.get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
+        url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
         response = self.session.post(url, json=mappings)
         requests_raise_for_status(response)
 

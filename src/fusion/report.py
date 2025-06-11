@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from .utils import (
     CamelCaseMeta,
@@ -137,7 +137,33 @@ class Report(metaclass=CamelCaseMeta):
         """Upload a new report to a Fusion catalog."""
         client = self._use_client(client)
         data = self.to_dict()
-        url = f"{client.get_new_root_url()}/api/corelineage-service/v1/reports"
+        url = f"{client._get_new_root_url()}/api/corelineage-service/v1/reports"
         resp: requests.Response = client.session.post(url, json=data)
         requests_raise_for_status(resp)
         return resp if return_resp_obj else None
+    
+    class AttributeTermMapping(TypedDict):
+        attribute: Dict[str, str]
+        term: Dict[str, str]
+        isKDE: bool
+
+    def link_attributes_to_terms(
+        self,
+        report_id: str,
+        mappings: List[AttributeTermMapping],
+        return_resp_obj: bool = False,
+    ) -> Optional[requests.Response]:
+        for i, m in enumerate(mappings):
+            if not isinstance(m, dict):
+                raise ValueError(f"Mapping at index {i} is not a dictionary.")
+            if not ("attribute" in m and "term" in m and "isKDE" in m):
+                raise ValueError(f"Mapping at index {i} must include 'attribute', 'term', and 'isKDE'.")
+
+        client = self._use_client(None)
+        base = client._get_new_root_url()
+        url = f"{base}/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
+
+        response = client.session.post(url, json=mappings)
+        requests_raise_for_status(response)
+
+        return response if return_resp_obj else None

@@ -896,7 +896,7 @@ class Fusion:
         fs_fusion = self.get_fusion_filesystem()
         if self.fs.info(path)["type"] == "directory":
             file_path_lst = self.fs.find(path)
-            local_file_validation = validate_file_names(file_path_lst, fs_fusion)
+            local_file_validation = validate_file_names(file_path_lst)
             file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
             file_name = [f.split("/")[-1] for f in file_path_lst]
             is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
@@ -904,7 +904,7 @@ class Fusion:
         else:
             file_path_lst = [path]
             if not catalog or not dataset:
-                local_file_validation = validate_file_names(file_path_lst, fs_fusion)
+                local_file_validation = validate_file_names(file_path_lst)
                 file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
                 is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
                 local_url_eqiv = [path_to_url(i, r) for i, r in zip(file_path_lst, is_raw_lst)]
@@ -915,28 +915,7 @@ class Fusion:
                 if date_identifier.match(dt_str):
                     dt_str = dt_str if dt_str != "latest" else pd.Timestamp("today").date().strftime("%Y%m%d")
                     dt_str = pd.Timestamp(dt_str).date().strftime("%Y%m%d")
-
-
-                try:
-                    catalog_list = fs_fusion.ls(catalog)
-                except FileNotFoundError:
-                    raise RuntimeError(f"The catalog '{catalog}' does not exist.") from None
-
-                try:
-                    if (
-                        catalog not in [i.split("/")[0] for i in catalog_list]
-                        or not js.loads(fs_fusion.cat(f"{catalog}/datasets/{dataset}"))["identifier"]
-                    ):
-                        msg = (
-                            f"File file has not been uploaded, one of the catalog: {catalog} "
-                            f"or dataset: {dataset} does not exist."
-                        )
-                        warnings.warn(msg, stacklevel=2)
-                        return [(False, path, msg)]
-                except Exception as e:  # noqa: BLE001
-                    msg = f"An error occurred while checking the dataset: {str(e)}"
-                    warnings.warn(msg, stacklevel=2)
-                    return [(False, path, msg)]
+                
                 file_format = path.split(".")[-1]
                 file_name = [path.split("/")[-1]]
                 file_format = "raw" if file_format not in RECOGNIZED_FORMATS else file_format

@@ -88,7 +88,7 @@ class Fusion:
 
     def __init__(
         self,
-        credentials: Union[str, dict] = "config/client_credentials.json",
+        credentials: str | FusionCredentials = "config/client_credentials.json",
         root_url: str = "https://fusion.jpmorgan.com/api/v1/",
         download_folder: str = "downloads",
         *,

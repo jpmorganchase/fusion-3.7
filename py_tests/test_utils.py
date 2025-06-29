@@ -23,6 +23,7 @@ from fusion.utils import (
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
+    file_name_to_url,
     get_session,
     is_dataset_raw,
     make_bool,
@@ -32,6 +33,7 @@ from fusion.utils import (
     snake_to_camel,
     tidy_string,
     upload_files,
+    validate_file_formats,
     validate_file_names,
 )
 
@@ -424,14 +426,14 @@ def test_upload_public(
 ) -> None:
     fs_fusion, fs_local = setup_fs
 
-    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=True, parallel=False)
+    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=True)
     assert res
-    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False, parallel=False)
+    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False)
     assert res
 
     fs_local.size.return_value = 5 * 2**20
     fs_local = io.BytesIO(b"some data to simulate file content" * 100)
-    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False, parallel=False)
+    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False)
     assert res
 
 
@@ -440,12 +442,12 @@ def test_upload_public_parallel(
 ) -> None:
     fs_fusion, fs_local = setup_fs
 
-    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False, parallel=True)
+    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False)
     assert res
 
     fs_local.size.return_value = 5 * 2**20
     fs_local = io.BytesIO(b"some data to simulate file content" * 100)
-    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False, parallel=True)
+    res = upload_files(fs_fusion, fs_local, upload_rows, show_progress=False)
     assert res
 
 
@@ -523,3 +525,78 @@ def test_convert_format_slash() -> None:
 def test_snake_to_camel() -> None:
     """Test snake to camel."""
     assert snake_to_camel("this_is_snake") == "thisIsSnake"
+
+def test_folder_does_not_exist(mock_fs_fusion: MagicMock)  -> None:
+    mock_fs_fusion.exists.return_value = False
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        validate_file_formats(mock_fs_fusion, "/nonexistent")
+
+def test_single_raw_file(mock_fs_fusion: MagicMock) -> None:
+    mock_fs_fusion.makedirs("/test")
+    mock_fs_fusion.touch("/test/file1.raw")
+    # Should not raise
+    validate_file_formats(mock_fs_fusion, "/test")
+
+def test_only_supported_files(mock_fs_fusion: MagicMock) -> None:
+    mock_fs_fusion.makedirs("/data")
+    mock_fs_fusion.touch("/data/file1.csv")
+    mock_fs_fusion.touch("/data/file2.json")
+    mock_fs_fusion.touch("/data/file3.xlsx")
+    # Should not raise
+    validate_file_formats(mock_fs_fusion, "/data")
+
+def test_multiple_raw_files(mock_fs_fusion: MagicMock) -> None:
+    mock_fs_fusion.exists.return_value = True
+    mock_fs_fusion.find.return_value = [
+        "/mixed/file1.unknown",
+        "/mixed/file2.custom",
+        "/mixed/readme.txt"
+    ]
+    mock_fs_fusion.info.side_effect = lambda _: {"type": "file"}
+
+    with pytest.raises(ValueError, match="Multiple raw files detected"):
+        validate_file_formats(mock_fs_fusion, "/mixed")
+
+@pytest.mark.parametrize(
+    (
+        "file_name",
+        "dataset",
+        "catalog",
+        "is_download",
+        "expected_ext",
+        "expected_series",
+    ),
+    [
+        ("folder__file.csv", "my_dataset", "my_catalog", False, "csv", "folder__file"),
+        ("data__deep.custom", "my_dataset", "my_catalog", False, "raw", "data__deep"),
+        ("no__ext", "my_dataset", "my_catalog", False, "raw", "no__ext"),
+        ("some__leaf.json", "my_dataset", "my_catalog", True, "json", "some__leaf"),
+        ("folder__20200101/extra.csv", "my_dataset", "my_catalog", False, "csv", "folder__20200101/extra"),
+    ],
+)
+def test_file_name_to_url(
+    monkeypatch: pytest.MonkeyPatch,
+    file_name: str,
+    dataset: str,
+    catalog: str,
+    is_download: bool,
+    expected_ext: str,
+    expected_series: str,
+) -> None:
+
+    def mock_distribution_to_url(
+        root_url: str, # noqa: ARG001
+        dataset_arg: str,
+        series: str,
+        ext: str,
+        catalog_arg: str,
+        is_download_arg: bool,
+    ) -> str:
+        return f"/mock/{catalog_arg}/{dataset_arg}/{series}.{ext}?dl={is_download_arg}"
+
+    monkeypatch.setattr("fusion.utils.distribution_to_url", mock_distribution_to_url)
+
+    result = file_name_to_url(file_name, dataset, catalog, is_download)
+    expected_url = f"mock/{catalog}/{dataset}/{expected_series}.{expected_ext}?dl={is_download}"
+    assert result == expected_url
+

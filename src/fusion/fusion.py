@@ -30,6 +30,7 @@ from .utils import (
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
+    file_name_to_url,
     get_default_fs,
     get_session,
     is_dataset_raw,
@@ -37,6 +38,7 @@ from .utils import (
     path_to_url,
     requests_raise_for_status,
     upload_files,
+    validate_file_formats,
     validate_file_names,
 )
 
@@ -100,8 +102,8 @@ class Fusion:
         """Constructor to instantiate a new Fusion object.
 
         Args:
-            credentials (Union[str, dict]): A path to a credentials file or a dictionary containing credentials.
-                Defaults to 'config/client_credentials.json'.
+            credentials (Union[str, FusionCredentials]): A path to a credentials file or a fully populated
+            FusionCredentials object. Defaults to 'config/client_credentials.json'.
             root_url (str): The API root URL. Defaults to "https://fusion.jpmorgan.com/api/v1/".
             download_folder (str): The folder path where downloaded data files are saved. Defaults to "downloads".
             log_level (int): Set the logging level. Defaults to logging.ERROR.
@@ -864,18 +866,20 @@ class Fusion:
         """Uploads the requested files/files to Fusion.
 
         Args:
-            path (str): path to a file or a folder with files
+            path (str): ath to a file or a folder with sub folders and files
             dataset (str, optional): Dataset identifier to which the file will be uploaded (for single file only).
                                     If not provided the dataset will be implied from file's name.
+                                    This is mandatory when uploading a directory.
             dt_str (str, optional): A file name. Can be any string but is usually a date.
                                     Defaults to 'latest' which will return the most recent.
                                     Relevant for a single file upload only. If not provided the dataset will
-                                    be implied from file's name.
+                                    be implied from file's name. dt_str will be ignored when uploading 
+                                    a directory.
             catalog (str, optional): A catalog identifier. Defaults to 'common'.
-            n_par (int, optional): Specify how many distributions to download in parallel.
+            n_par (int, optional): Specify how many distributions to upload in parallel.
                 Defaults to all cpus available.
-            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
-            return_paths (bool, optional): Return paths and success statuses of the downloaded files.
+            show_progress (bool, optional): Display a progress bar during data upload Defaults to True.
+            return_paths (bool, optional): Return paths and success statuses of the uploaded files.
             multipart (bool, optional): Is multipart upload.
             chunk_size (int, optional): Maximum chunk size.
             from_date (str, optional): start of the data date range contained in the distribution,
@@ -883,6 +887,7 @@ class Fusion:
             to_date (str, optional): end of the data date range contained in the distribution,
                 defaults to upload date.
             preserve_original_name (bool, optional): Preserve the original name of the file. Defaults to False.
+            Original name not preserved when uploading a directory.
 
         Returns:
 
@@ -895,12 +900,36 @@ class Fusion:
 
         fs_fusion = self.get_fusion_filesystem()
         if self.fs.info(path)["type"] == "directory":
-            file_path_lst = self.fs.find(path)
-            local_file_validation = validate_file_names(file_path_lst)
-            file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
-            file_name = [f.split("/")[-1] for f in file_path_lst]
-            is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
-            local_url_eqiv = [path_to_url(i, r) for i, r in zip(file_path_lst, is_raw_lst)]
+            validate_file_formats(self.fs, path)
+            if dt_str and dt_str != "latest":
+                logger.warning("`dt_str` is not considered when uploading a directory. "
+                                "File names in the directory are used as series members instead.")
+            file_path_lst = [f for f in self.fs.find(path) if self.fs.info(f)["type"] == "file"]
+
+            base_path = Path(path).resolve()
+            # Construct unique file names by flattening the relative path from the base directory.
+            # For example, if the base directory is 'data_folder' and a file is at 'data_folder/sub1/file.txt',
+            # the resulting name will be 'data_folder__sub1__file.txt'.
+            # This ensures that files in different subdirectories with the same base name do not conflict
+            # and helps preserve the folder structure in the filename.  
+            file_name = [
+                base_path.name + "__" + "__".join(Path(f).resolve().relative_to(base_path).parts)
+                for f in file_path_lst
+            ]
+
+            if catalog and dataset:
+                # Construct URL mappings using the constructed file names as the series member
+                local_url_eqiv = [
+                    file_name_to_url(fname, dataset, catalog, is_download=False)
+                    for fname in file_name
+                ]
+            else:
+                # No catalog/dataset: validate file names and infer raw
+                local_file_validation = validate_file_names(file_path_lst)
+                file_path_lst = [f for flag, f in zip(local_file_validation, file_path_lst) if flag]
+                file_name = [f.split("/")[-1] for f in file_path_lst]
+                is_raw_lst = is_dataset_raw(file_path_lst, fs_fusion)
+                local_url_eqiv = [path_to_url(i, r) for i, r in zip(file_path_lst, is_raw_lst)]
         else:
             file_path_lst = [path]
             if not catalog or not dataset:
@@ -911,10 +940,14 @@ class Fusion:
                 if preserve_original_name:
                     raise ValueError("preserve_original_name can only be used when catalog and dataset are provided.")
             else:
+                # Normalize the dt_str
                 date_identifier = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
-                if date_identifier.match(dt_str):
-                    dt_str = dt_str if dt_str != "latest" else pd.Timestamp("today").date().strftime("%Y%m%d")
+                if dt_str == "latest":
+                    dt_str = pd.Timestamp("today").date().strftime("%Y%m%d")
+                elif date_identifier.match(dt_str):
                     dt_str = pd.Timestamp(dt_str).date().strftime("%Y%m%d")
+                else:
+                    raise ValueError(f"Invalid date format: {dt_str}. Expected YYYYMMDD or 'latest'.")
                 
                 file_format = path.split(".")[-1]
                 file_name = [path.split("/")[-1]]
@@ -924,21 +957,18 @@ class Fusion:
                     "/".join(distribution_to_url("", dataset, dt_str, file_format, catalog, False).split("/")[1:])
                 ]
 
-        if not preserve_original_name:
-            data_map_df = pd.DataFrame([file_path_lst, local_url_eqiv]).T
-            data_map_df.columns = pd.Index(["path", "url"])
-        else:
+        if self.fs.info(path)["type"] == "directory" or preserve_original_name:
             data_map_df = pd.DataFrame([file_path_lst, local_url_eqiv, file_name]).T
             data_map_df.columns = pd.Index(["path", "url", "file_name"])
+        else:
+            data_map_df = pd.DataFrame([file_path_lst, local_url_eqiv]).T
+            data_map_df.columns = pd.Index(["path", "url"])
 
-        n_par = cpu_count(n_par)
-        parallel = len(data_map_df) > 1
+        n_par = cpu_count(n_par)        
         res = upload_files(
             fs_fusion,
             self.fs,
-            data_map_df,
-            parallel=parallel,
-            n_par=n_par,
+            data_map_df,            
             multipart=multipart,
             chunk_size=chunk_size,
             show_progress=show_progress,

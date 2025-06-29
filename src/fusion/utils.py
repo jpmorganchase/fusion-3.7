@@ -442,9 +442,7 @@ def path_to_url(x: str, is_raw: bool = False, is_download: bool = False) -> str:
 def upload_files(  # noqa: PLR0913
     fs_fusion: fsspec.AbstractFileSystem,
     fs_local: fsspec.AbstractFileSystem,
-    loop: pd.DataFrame,
-    parallel: bool = True,
-    n_par: int = -1,
+    loop: pd.DataFrame,    
     multipart: bool = True,
     chunk_size: int = 5 * 2**20,
     show_progress: bool = True,
@@ -457,9 +455,7 @@ def upload_files(  # noqa: PLR0913
     Args:
         fs_fusion: Fusion filesystem.
         fs_local: Local filesystem.
-        loop (pd.DataFrame): DataFrame of files to iterate through.
-        parallel (bool): Is parallel mode enabled.
-        n_par (int): Number of subprocesses.
+        loop (pd.DataFrame): DataFrame of files to iterate through.        
         multipart (bool): Is multipart upload.
         chunk_size (int): Maximum chunk size.
         show_progress (bool): Show progress bar
@@ -638,3 +634,59 @@ def requests_raise_for_status(response: requests.Response) -> None:
         response.reason = real_reason
     finally:
         response.raise_for_status()
+
+def validate_file_formats(fs_fusion: fsspec.AbstractFileSystem, path: str) -> None:
+    """
+    Validate file formats in the given folder and subfolders.
+    Raise an error if more than one raw (unrecognized) file is found.
+
+    Args:
+        fs (fsspec.AbstractFileSystem): Filesystem instance (local, S3, etc.)
+        folder_path (str): Root folder path to search
+
+    Raises:
+        ValueError: If more than one raw file is found.
+    """
+    if not fs_fusion.exists(path):
+        raise FileNotFoundError(f"The folder '{path}' does not exist.")
+
+    all_files = [f for f in fs_fusion.find(path) if fs_fusion.info(f)["type"] == "file"]
+    raw_files = [
+        f for f in all_files
+        if f.split(".")[-1].lower() not in RECOGNIZED_FORMATS
+    ]
+
+    if len(raw_files) > 1:
+        raise ValueError(
+            f"Multiple raw files detected in '{path}':\n"
+            f"{chr(10).join(raw_files)}\n\n"
+            f"Only one raw file is allowed. Supported formats are:\n"
+            f"{', '.join(RECOGNIZED_FORMATS)}"
+        )
+    
+def file_name_to_url(
+    file_name: str, dataset: str, catalog: str, is_download: bool = False
+) -> str:
+    """Construct a distribution URL using the constructed file name as the series member.
+
+    Args:
+        file_name (str): Flattened file name.
+        dataset (str): Dataset name.
+        catalog (str): Catalog name.
+        is_download (bool, optional): Whether the URL is for download. Defaults to False.
+
+    Returns:
+        str: Relative distribution URL string.
+    """
+    parts = file_name.rsplit(".", 1)
+
+    datasetseries = parts[0]  # Use the full base name (excluding extension) as the date
+    ext = (
+        "raw"
+        if len(parts) == 1 or parts[1].lower() not in RECOGNIZED_FORMATS
+        else parts[1].lower()
+    )
+
+    return "/".join(
+        distribution_to_url("", dataset, datasetseries, ext, catalog, is_download).split("/")[1:]
+    )

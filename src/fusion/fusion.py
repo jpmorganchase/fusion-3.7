@@ -866,7 +866,7 @@ class Fusion:
         """Uploads the requested files/files to Fusion.
 
         Args:
-            path (str): ath to a file or a folder with sub folders and files
+            path (str): Path to a file or a folder with sub folders and files
             dataset (str, optional): Dataset identifier to which the file will be uploaded (for single file only).
                                     If not provided the dataset will be implied from file's name.
                                     This is mandatory when uploading a directory.
@@ -880,14 +880,14 @@ class Fusion:
                 Defaults to all cpus available.
             show_progress (bool, optional): Display a progress bar during data upload Defaults to True.
             return_paths (bool, optional): Return paths and success statuses of the uploaded files.
-            multipart (bool, optional): Is multipart upload.
+            multipart (bool, optional): Is multipart upload. Defaults to True.
             chunk_size (int, optional): Maximum chunk size.
             from_date (str, optional): start of the data date range contained in the distribution,
                 defaults to upoad date
             to_date (str, optional): end of the data date range contained in the distribution,
                 defaults to upload date.
             preserve_original_name (bool, optional): Preserve the original name of the file. Defaults to False.
-            Original name not preserved when uploading a directory.
+                Original name not preserved when uploading a directory.
 
         Returns:
 

@@ -1,6 +1,5 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
 from __future__ import annotations
-from typing import Optional
 
 import copy
 import json as js

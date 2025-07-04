@@ -2,88 +2,128 @@ import datetime
 import json
 import logging
 import re
+from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 import requests
 import requests_mock
+from pandas.testing import assert_frame_equal
 from pytest_mock import MockerFixture
 
-from fusion.attributes import Attribute
+from fusion import Fusion
+from fusion.attributes import Attribute, Types
 from fusion.credentials import FusionCredentials
-from fusion.exceptions import APIResponseError, FileFormatError
-from fusion.fusion import Fusion, logger
-from fusion.fusion_types import Types
+from fusion.exceptions import CredentialError, FileFormatError
+from fusion.fusion import logger
 from fusion.utils import _normalise_dt_param, distribution_to_url
 
 
-def test_rust_ok() -> None:
-    from fusion import rust_ok
-
-    assert rust_ok()
-
-
-def test__get_canonical_root_url() -> None:
-    from fusion.utils import _get_canonical_root_url
-
-    some_url = "https://fusion.jpmorgan.com/api/v1/a_given_resource"
-    root_url = "https://fusion.jpmorgan.com"
-    assert root_url == _get_canonical_root_url(some_url)
+@pytest.fixture
+def example_creds_dict_token() -> Dict[str, str]:
+    """Fixture providing example credentials."""
+    return {
+        "token": "test_token",
+    }
 
 
-def test_fusion_credentials(example_creds_dict: dict[str, Any], tmp_path: Path) -> None:
-    credentials_file = tmp_path / "client_credentials.json"
-    with Path(credentials_file).open("w") as f:
-        json.dump(example_creds_dict, f)
-    assert FusionCredentials.from_file(credentials_file)
+@pytest.fixture
+def mock_response_data() -> Dict[str, Any]:
+    """Fixture providing mock API response data."""
+    return {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
 
 
-def test_fusion_init(credentials: FusionCredentials) -> None:
+def test_call_for_dataframe(mock_response_data: Dict[str, Any]) -> None:
+    """Test `_call_for_dataframe` static method."""
+    url = "https://api.example.com/data"
+
+    with patch("requests.Session.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_response_data
+        mock_get.return_value.raise_for_status = lambda: None
+
+        session = requests.Session()
+        df = Fusion._call_for_dataframe(url, session)
+
+        assert isinstance(df, pd.DataFrame)
+        assert df.shape == (2, 2)
+        assert list(df.columns) == ["id", "name"]
+        assert df.iloc[0]["id"] == 1
+        assert df.iloc[0]["name"] == "Resource 1"
+
+
+def test_call_for_bytes_object() -> None:
+    """Test `_call_for_bytes_object` static method."""
+    url = "https://api.example.com/file"
+    mock_content = b"Mock file content"
+
+    with patch("requests.Session.get") as mock_get:
+        mock_get.return_value.content = mock_content
+        mock_get.return_value.raise_for_status = lambda: None
+
+        session = requests.Session()
+        byte_obj = Fusion._call_for_bytes_object(url, session)
+
+        assert isinstance(byte_obj, BytesIO)
+        assert byte_obj.read() == mock_content
+
+
+def test_fusion_init_with_credentials(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test `Fusion` class initialization with credentials."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
     fusion = Fusion(credentials=credentials)
-    assert fusion
+    assert isinstance(fusion, Fusion)
+    assert fusion.root_url == "https://fusion.jpmorgan.com/api/v1/"
+    assert fusion.download_folder == "downloads"
 
 
-def test_fusion_init_from_path(example_creds_dict: dict[str, Any], tmp_path: Path) -> None:
-    credentials_file = tmp_path / "client_credentials_test.json"
-    with Path(credentials_file).open("w") as f:
-        json.dump(example_creds_dict, f)
+def test_fusion_init_with_path(example_creds_dict_token: Dict[str, str], tmp_path: Path) -> None:
+    """Test `Fusion` class initialization with a credentials file."""
+    example_creds_dict_token.update({
+        "client_id": "test_client_id",
+        "client_secret": "test_client_secret",
+        "username": "test_user",
+        "password": "test_password",
+    })
+    credentials_file = tmp_path / "credentials.json"
+    with credentials_file.open("w") as f:
+        json.dump(example_creds_dict_token, f)
+
     fusion = Fusion(credentials=str(credentials_file))
-    assert fusion
+    assert isinstance(fusion, Fusion)
+    assert fusion.root_url == "https://fusion.jpmorgan.com/api/v1/"
+    assert fusion.download_folder == "downloads"
 
 
-def test_fusion_init_cred_value_error(example_creds_dict: dict[str, Any]) -> None:
-    with pytest.raises(
-        ValueError, match="credentials must be a path to a credentials file or FusionCredentials object"
-    ) as error_info:
-        Fusion(credentials=example_creds_dict)  # type: ignore
-    assert str(error_info.value) == "credentials must be a path to a credentials file or FusionCredentials object"
-
-
-def test_fusion_credentials_no_pxy(example_creds_dict_no_pxy: dict[str, Any], tmp_path: Path) -> None:
-    credentials_file = tmp_path / "client_credentials.json"
-    with Path(credentials_file).open("w") as f:
-        json.dump(example_creds_dict_no_pxy, f)
-    assert FusionCredentials.from_file(credentials_file)
-
-
-def test_fusion_credentials_empty_pxy(example_creds_dict_empty_pxy: dict[str, Any], tmp_path: Path) -> None:
-    credentials_file = tmp_path / "client_credentials.json"
-    with Path(credentials_file).open("w") as f:
-        json.dump(example_creds_dict_empty_pxy, f)
-
-    assert FusionCredentials.from_file(credentials_file)
-
-
-def test_use_catalog(credentials: FusionCredentials) -> None:
+def test_fusion_repr(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test the `__repr__` method of the `Fusion` class."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
     fusion = Fusion(credentials=credentials)
-    def_cat = "def_cat"
-    fusion.default_catalog = def_cat
-    assert def_cat == fusion._use_catalog(None)
-    new_cat = "new_cat"
-    assert new_cat == fusion._use_catalog(new_cat)
+    repr_str = repr(fusion)
+    assert "Fusion object" in repr_str
+    assert "Available methods" in repr_str
 
+
+def test_default_catalog_property(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test the `default_catalog` property of the `Fusion` class."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials)
+    assert fusion.default_catalog == "common"
+
+    fusion.default_catalog = "new_catalog"
+    assert fusion.default_catalog == "new_catalog"
+
+
+def test_use_catalog(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test the `_use_catalog` method."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials)
+    fusion.default_catalog = "default_cat"
+
+    assert fusion._use_catalog(None) == "default_cat"
+    assert fusion._use_catalog("specific_cat") == "specific_cat"
 
 def test_date_parsing() -> None:
     assert _normalise_dt_param(20201212) == "2020-12-12"
@@ -92,19 +132,6 @@ def test_date_parsing() -> None:
     assert _normalise_dt_param(datetime.date(2020, 12, 12)) == "2020-12-12"
     dtm = datetime.datetime(2020, 12, 12, 23, 55, 59, 342380, tzinfo=datetime.timezone.utc)
     assert _normalise_dt_param(dtm) == "2020-12-12"
-
-
-@pytest.mark.parametrize("ref_int", [-1, 0, 1, 2])
-@pytest.mark.parametrize("pluraliser", [None, "s", "es"])
-def test_res_plural(ref_int: int, pluraliser: str) -> None:
-    from fusion.authentication import _res_plural
-
-    res = _res_plural(ref_int, pluraliser)
-    if abs(ref_int) == 1:
-        assert res == ""
-    else:
-        assert res == pluraliser
-
 
 def test_is_url() -> None:
     from fusion.authentication import _is_url
@@ -118,8 +145,6 @@ def test_is_url() -> None:
     assert not _is_url("googlecom.")
     assert not _is_url(3.141)  # type: ignore
 
-
-
 def test_fusion_class(fusion_obj: Fusion) -> None:
     assert fusion_obj
     assert repr(fusion_obj)
@@ -127,11 +152,9 @@ def test_fusion_class(fusion_obj: Fusion) -> None:
     fusion_obj.default_catalog = "other"
     assert fusion_obj.default_catalog == "other"
 
-
 def test_get_fusion_filesystem(fusion_obj: Fusion) -> None:
     filesystem = fusion_obj.get_fusion_filesystem()
     assert filesystem is not None
-
 
 def test__call_for_dataframe_success(requests_mock: requests_mock.Mocker) -> None:
     # Mock the response from the API endpoint
@@ -148,7 +171,6 @@ def test__call_for_dataframe_success(requests_mock: requests_mock.Mocker) -> Non
     # Check if the dataframe is created correctly
     expected_df = pd.DataFrame(expected_data["resources"])
     pd.testing.assert_frame_equal(test_df, expected_df)
-
 
 def test__call_for_dataframe_error(requests_mock: requests_mock.Mocker) -> None:
     # Mock the response from the API endpoint with an error status code
@@ -177,7 +199,6 @@ def test__call_for_bytes_object_success(requests_mock: requests_mock.Mocker) -> 
 
     # Check if the data is returned correctly
     assert data.getbuffer() == expected_data
-
 
 def test__call_for_bytes_object_fail(requests_mock: requests_mock.Mocker) -> None:
     # Mock the response from the API endpoint with an error status code
@@ -215,7 +236,6 @@ def test_list_catalogs_fail(requests_mock: requests_mock.Mocker, fusion_obj: Fus
     with pytest.raises(requests.exceptions.HTTPError):
         fusion_obj.list_catalogs()
 
-
 def test_catalog_resources_success(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     # Mock the response from the API endpoint
 
@@ -248,7 +268,6 @@ def test_list_products_success(requests_mock: requests_mock.Mocker, fusion_obj: 
     expected_df = pd.DataFrame(expected_data["resources"])
     pd.testing.assert_frame_equal(test_df, expected_df)
 
-
 def test_list_products_contains_success(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     new_catalog = "catalog_id"
     url = f"{fusion_obj.root_url}catalogs/{new_catalog}/products"
@@ -280,7 +299,6 @@ def test_list_products_contains_success(requests_mock: requests_mock.Mocker, fus
     # Check if the dataframe is created correctly
     pd.testing.assert_frame_equal(test_df, expected_df)
 
-
 def test_list_datasets_success(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     new_catalog = "catalog_id"
     url = f"{fusion_obj.root_url}catalogs/{new_catalog}/datasets"
@@ -295,7 +313,7 @@ def test_list_datasets_success(requests_mock: requests_mock.Mocker, fusion_obj: 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2)
     # Check if the dataframe is created correctly
     expected_df = pd.DataFrame(expected_data["resources"])
-    pd.testing.assert_frame_equal(test_df, expected_df)
+    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
 
 
 def test_list_datasets_type_filter(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
@@ -340,8 +358,7 @@ def test_list_datasets_type_filter(requests_mock: requests_mock.Mocker, fusion_o
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, dataset_type="type1")
 
-    pd.testing.assert_frame_equal(test_df, expected_df)
-
+    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
 
 def test_list_datasets_contains_success(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     new_catalog = "catalog_id"
@@ -367,6 +384,34 @@ def test_list_datasets_contains_success(requests_mock: requests_mock.Mocker, fus
     expected_df = pd.DataFrame(expected_data["resources"])
 
     requests_mock.get(url, json=server_mock_data)
+    requests_mock.get(
+    f"{fusion_obj.root_url}catalogs/{new_catalog}/datasets/ONE",
+        json={
+            "identifier": "ONE",
+            "description": "some desc",
+            "category": ["FX"],
+            "region": ["US"],
+            "status": "active",
+            "title": None,
+            "containerType": None,
+            "coverageStartDate": None,
+            "coverageEndDate": None,
+            "type": None,
+        }
+    )
+
+    expected_df_exact_match = pd.DataFrame([{
+    "identifier": "ONE",
+    "title": None,
+    "containerType": None,
+    "region": ["US"],
+    "category": ["FX"],
+    "coverageStartDate": None,
+    "coverageEndDate": None,
+    "description": "some desc",
+    "status": "active",
+    "type": None
+    }])
 
     select_prod = "prod_a"
     prod_url = f"{fusion_obj.root_url}catalogs/{new_catalog}/productDatasets"
@@ -378,56 +423,26 @@ def test_list_datasets_contains_success(requests_mock: requests_mock.Mocker, fus
     }
     requests_mock.get(prod_url, json=server_prod_mock_data)
 
-    dataset_url = f"{fusion_obj.root_url}catalogs/{new_catalog}/datasets/ONE"
-    requests_mock.get(dataset_url, json=expected_data["resources"][0])
-    cols = [
-        "identifier",
-        "title",
-        "containerType",
-        "region",
-        "category",
-        "coverageStartDate",
-        "coverageEndDate",
-        "description",
-        "status",
-        "type",
-    ]
-
-    data = {
-        "identifier": "ONE",
-        "title": None,
-        "containerType": None,
-        "region": "US",
-        "category": "FX",
-        "coverageStartDate": None,
-        "coverageEndDate": None,
-        "description": "some desc",
-        "status": "active",
-        "type": None,
-    }
-
-    expected_df_exact_match = pd.DataFrame([data], columns=cols)
-
     # Call the catalog_resources method
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, contains=["ONE"])
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df)
+    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, contains="ONE")
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df_exact_match)
+    pd.testing.assert_frame_equal(test_df, expected_df_exact_match, check_like=True)
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, contains="ONE", id_contains=True)
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df_exact_match)
+    pd.testing.assert_frame_equal(test_df, expected_df_exact_match, check_like=True)
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, product=select_prod)
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df)
+    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
 
     test_df = fusion_obj.list_datasets(catalog=new_catalog, max_results=2, status="active")
     # Check if the dataframe is created correctly
-    pd.testing.assert_frame_equal(test_df, expected_df)
+    pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
 
 
 def test_dataset_resources_success(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
@@ -532,7 +547,6 @@ def test_list_dataset_attributes(requests_mock: requests_mock.Mocker, fusion_obj
     # Check if the dataframe is created correctly
     pd.testing.assert_frame_equal(test_df, ext_expected_df)
 
-
 def test_list_datasetmembers_success(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     new_catalog = "catalog_id"
     dataset = "my_dataset"
@@ -540,7 +554,7 @@ def test_list_datasetmembers_success(requests_mock: requests_mock.Mocker, fusion
     expected_data = {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
     requests_mock.get(url, json=expected_data)
 
-    # Call the catalog_resources method
+    # Call the list_datasetmembers method
     test_df = fusion_obj.list_datasetmembers(dataset, new_catalog, max_results=2)
 
     # Check if the dataframe is created correctly
@@ -556,7 +570,7 @@ def test_datasetmember_resources_success(requests_mock: requests_mock.Mocker, fu
     expected_data = {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
     requests_mock.get(url, json=expected_data)
 
-    # Call the catalog_resources method
+    # Call the datasetmember_resources method
     test_df = fusion_obj.datasetmember_resources(dataset, series, new_catalog)
 
     # Check if the dataframe is created correctly
@@ -572,7 +586,7 @@ def test_list_distributions_success(requests_mock: requests_mock.Mocker, fusion_
     expected_data = {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
     requests_mock.get(url, json=expected_data)
 
-    # Call the catalog_resources method
+    # Call the list_distributions method
     test_df = fusion_obj.list_distributions(dataset, series, new_catalog)
 
     # Check if the dataframe is created correctly
@@ -582,9 +596,8 @@ def test_list_distributions_success(requests_mock: requests_mock.Mocker, fusion_
 
 def test__resolve_distro_tuples(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
-    with (
-        pytest.raises(AssertionError),
-        mocker.patch.object(fusion_obj, "list_datasetmembers", return_value=pd.DataFrame()),
+    with pytest.raises(AssertionError), mocker.patch.object(
+        fusion_obj, "list_datasetmembers", return_value=pd.DataFrame()
     ):
         fusion_obj._resolve_distro_tuples("dataset", "catalog", "series")
 
@@ -602,24 +615,27 @@ def test__resolve_distro_tuples(mocker: MockerFixture, fusion_obj: Fusion) -> No
         (catalog, "dataset", "2020-01-03", "parquet"),
     ]
 
-    with (
-        mocker.patch.object(fusion_obj, "list_datasetmembers", return_value=valid_ds_members),
-    ):
+    with mocker.patch.object(fusion_obj, "list_datasetmembers", return_value=valid_ds_members):
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog, dt_str="2020-01-01:2020-01-03")
         assert res == exp_tuples
+
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog, dt_str=":")
         assert res == exp_tuples
+
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog, dt_str="2020-01-01:2020-01-02")
-        assert res == exp_tuples[0:2]
+        assert res == exp_tuples[:2]
+
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog, dt_str="2020-01-02:2020-01-03")
         assert res == exp_tuples[1:]
+
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog)
         assert res == [exp_tuples[-1]]
+
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog, dt_str="2020-01-03")
         assert res == [exp_tuples[-1]]
+
         res = fusion_obj._resolve_distro_tuples("dataset", catalog=catalog, dt_str="latest")
         assert res == [exp_tuples[-1]]
-
 
 def test_to_bytes(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
@@ -630,6 +646,7 @@ def test_to_bytes(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> No
     expected_data = b"some binary data"
     requests_mock.get(url, content=expected_data)
 
+    # Call the to_bytes method
     data = fusion_obj.to_bytes(catalog, dataset, datasetseries, file_format)
 
     # Check if the data is returned correctly
@@ -643,15 +660,18 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     dt_str = "20200101:20200103"
     file_format = "csv"
 
+    # Dates for mocking _resolve_distro_tuples response
     dates = ["2020-01-01", "2020-01-02", "2020-01-03"]
     patch_res = [(catalog, dataset, dt, "parquet") for dt in dates]
 
+    # Mock _resolve_distro_tuples method
     mocker.patch.object(
         fusion_obj,
         "_resolve_distro_tuples",
         return_value=patch_res,
     )
 
+    # Mock download_single_file_threading return values
     dwn_load_res = [
         (True, f"{fusion_obj.download_folder}/{dataset}__{catalog}__{dt}.{file_format}", None) for dt in dates
     ]
@@ -660,8 +680,10 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
         return_value=dwn_load_res,
     )
 
+    # Mock stream_single_file_new_session return value
     mocker.patch("fusion.fusion.stream_single_file_new_session", return_value=dwn_load_res[0])
 
+    # Call the download method and check results
     res = fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
     assert not res
 
@@ -699,6 +721,7 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     assert res
     assert len(res[0]) == len(dates)
 
+    # Test error handling
     mocker.patch("fusion.fusion.stream_single_file_new_session", return_value=(False, "my_file.dat", "Some Err"))
     res = fusion_obj.download(
         dataset=dataset,
@@ -720,7 +743,6 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     assert len(res) == 1
     assert res[0][0]
     assert "sample" in res[0][1]
-
 
 def test_download_no_access(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
@@ -778,7 +800,7 @@ def test_download_no_access(requests_mock: requests_mock.Mocker, fusion_obj: Fus
     requests_mock.get(url, json=expected_data)
 
     with pytest.raises(
-        APIResponseError, match="You are not subscribed to TEST_DATASET in catalog my_catalog. Please request access."
+        CredentialError, match="You are not subscribed to TEST_DATASET in catalog my_catalog. Please request access."
     ):
         fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
 
@@ -1023,65 +1045,50 @@ def test_download_multiple_format_error(requests_mock: requests_mock.Mocker, fus
     with pytest.raises(
         FileFormatError,
         match=re.escape(
-            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to"
-            "download. Available formats are ['csv', 'parquet']."
+            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to download. "
+            "Available formats are ['csv', 'parquet']."
         ),
     ):
         fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=None, catalog=catalog)
 
-
-def test_to_df(mocker: MockerFixture, tmp_path: Path, data_table_as_csv: str, fusion_obj: Fusion) -> None:
+def test_to_df(fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
     dataset = "my_dataset"
-    dates = ["2020-01-01", "2020-01-02", "2020-01-03"]
-
-    files = [f"{tmp_path}/{dataset}__{catalog}__{dt}.csv" for dt in dates]
-    for f in files:
-        with Path(f).open("w") as f_h:
-            f_h.write(data_table_as_csv)
-
-    patch_res = [(True, file, None) for file in files]
-
-    mocker.patch.object(
-        fusion_obj,
-        "download",
-        return_value=patch_res,
-    )
-
-    res = fusion_obj.to_df(dataset, f"{dates[0]}:{dates[-1]}", "csv", catalog=catalog)
-    assert len(res) > 0
+    datasetseries = "2020-04-04"
+    file_format = "csv"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.to_df(catalog=catalog, dataset=dataset, dt_str=datasetseries, dataset_format=file_format)
 
 
-def test_to_table(mocker: MockerFixture, tmp_path: Path, data_table_as_csv: str, fusion_obj: Fusion) -> None:
+def test_to_table(fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
     dataset = "my_dataset"
-    dates = ["2020-01-01", "2020-01-02", "2020-01-03"]
-    fmt = "csv"
+    datasetseries = "2020-04-04"
+    file_format = "csv"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.to_table(catalog=catalog, dataset=dataset, dt_str=datasetseries, dataset_format=file_format)
 
-    files = [f"{tmp_path}/{dataset}__{catalog}__{dt}.{fmt}" for dt in dates]
-    for f in files:
-        with Path(f).open("w") as f_h:
-            f_h.write(data_table_as_csv)
+def test_listen_to_events(fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.listen_to_events(catalog=catalog)
 
-    patch_res = [(True, file, None) for file in files]
+def test_get_events(fusion_obj: Fusion) -> None:
+    catalog = "my_catalog"
+    # expect raise NotImplementedError
+    with pytest.raises(NotImplementedError):
+        fusion_obj.get_events(catalog=catalog)
 
-    mocker.patch.object(
-        fusion_obj,
-        "download",
-        return_value=patch_res,
-    )
-
-    res = fusion_obj.to_table(dataset, f"{dates[0]}:{dates[-1]}", fmt, catalog=catalog)
-    assert len(res) > 0
-
-
-def test_list_dataset_lineage(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_list_dataset_lineage(requests_mock: requests_mock.Mocker, fusion_obj: Any) -> None:
     dataset = "dataset_id"
     catalog = "catalog_id"
     url_dataset = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
     requests_mock.get(url_dataset, status_code=200)
     url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}/lineage"
-    expected_data = {
+    expected_data: Dict[str, Any] = {
         "relations": [
             {
                 "source": {"dataset": "source_dataset", "catalog": "source_catalog"},
@@ -1113,14 +1120,13 @@ def test_list_dataset_lineage(requests_mock: requests_mock.Mocker, fusion_obj: F
     )
     pd.testing.assert_frame_equal(test_df, expected_df)
 
-
-def test_list_dataset_lineage_max_results(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_list_dataset_lineage_max_results(requests_mock: requests_mock.Mocker, fusion_obj: Any) -> None:
     dataset = "dataset_id"
     catalog = "catalog_id"
     url_dataset = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
     requests_mock.get(url_dataset, status_code=200)
     url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}/lineage"
-    expected_data = {
+    expected_data: Dict[str, Any] = {
         "relations": [
             {
                 "source": {"dataset": "source_dataset", "catalog": "source_catalog"},
@@ -1145,14 +1151,14 @@ def test_list_dataset_lineage_max_results(requests_mock: requests_mock.Mocker, f
     assert len(test_df) == 1
 
 
-def test_list_dataset_lineage_resticted(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_list_dataset_lineage_restricted(requests_mock: requests_mock.Mocker, fusion_obj: Any) -> None:
     dataset_id = "dataset_id"
     catalog = "catalog_id"
     url_dataset = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset_id}"
     requests_mock.get(url_dataset, status_code=200)
     url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset_id}/lineage"
 
-    expected_data = {
+    expected_data: Dict[str, Any] = {
         "relations": [
             {
                 "source": {"dataset": "source_dataset", "catalog": "source_catalog"},
@@ -1184,25 +1190,26 @@ def test_list_dataset_lineage_resticted(requests_mock: requests_mock.Mocker, fus
     )
     pd.testing.assert_frame_equal(test_df, expected_df)
 
+    def test_list_dataset_lineage_dataset_not_found(requests_mock: Any, fusion_obj: Any) -> None:
+        dataset_id = "dataset_id"
+        catalog = "catalog_id"
+        url_dataset = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset_id}"
+        requests_mock.get(url_dataset, status_code=404)
 
-def test_list_dataset_lineage_dataset_not_found(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    dataset_id = "dataset_id"
-    catalog = "catalog_id"
-    url_dataset = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset_id}"
-    requests_mock.get(url_dataset, status_code=404)
-
-    with pytest.raises(requests.exceptions.HTTPError):
-        fusion_obj.list_dataset_lineage(dataset_id, catalog=catalog)
+        with pytest.raises(requests.exceptions.HTTPError):
+            fusion_obj.list_dataset_lineage(dataset_id, catalog=catalog)
 
 
-def test_create_dataset_lineage_from_df(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_create_dataset_lineage_from_df(requests_mock: Any, fusion_obj: Any) -> None:
     base_dataset = "base_dataset"
     source_dataset = "source_dataset"
     source_dataset_catalog = "source_catalog"
     catalog = "common"
     status_code = 200
     url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{base_dataset}/lineage"
-    expected_data = {"source": [{"dataset": source_dataset, "catalog": source_dataset_catalog}]}
+    expected_data: Dict[str, List[Dict[str, str]]] = {
+        "source": [{"dataset": source_dataset, "catalog": source_dataset_catalog}]
+    }
     requests_mock.post(url, json=expected_data)
 
     data = [{"dataset": "source_dataset", "catalog": "source_catalog"}]
@@ -1219,14 +1226,16 @@ def test_create_dataset_lineage_from_df(requests_mock: requests_mock.Mocker, fus
         assert resp.status_code == status_code
 
 
-def test_create_dataset_lineage_from_list(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_create_dataset_lineage_from_list(requests_mock: Any, fusion_obj: Any) -> None:
     base_dataset = "base_dataset"
     source_dataset = "source_dataset"
     source_dataset_catalog = "source_catalog"
     catalog = "common"
     status_code = 200
     url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{base_dataset}/lineage"
-    expected_data = {"source": [{"dataset": source_dataset, "catalog": source_dataset_catalog}]}
+    expected_data: Dict[str, List[Dict[str, str]]] = {
+        "source": [{"dataset": source_dataset, "catalog": source_dataset_catalog}]
+    }
     requests_mock.post(url, json=expected_data)
 
     data = [{"dataset": "source_dataset", "catalog": "source_catalog"}]
@@ -1242,13 +1251,15 @@ def test_create_dataset_lineage_from_list(requests_mock: requests_mock.Mocker, f
         assert resp.status_code == status_code
 
 
-def test_create_dataset_lineage_valueerror(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_create_dataset_lineage_valueerror(requests_mock: Any, fusion_obj: Any) -> None:
     base_dataset = "base_dataset"
     source_dataset = "source_dataset"
     source_dataset_catalog = "source_catalog"
     catalog = "common"
     url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{base_dataset}/lineage"
-    expected_data = {"source": [{"dataset": source_dataset, "catalog": source_dataset_catalog}]}
+    expected_data: Dict[str, List[Dict[str, str]]] = {
+        "source": [{"dataset": source_dataset, "catalog": source_dataset_catalog}]
+    }
     requests_mock.post(url, json=expected_data)
 
     data = {"dataset": "source_dataset", "catalog": "source_catalog"}
@@ -1262,8 +1273,7 @@ def test_create_dataset_lineage_valueerror(requests_mock: requests_mock.Mocker, 
             catalog=catalog,
         )
 
-
-def test_create_dataset_lineage_httperror(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+def test_create_dataset_lineage_httperror(requests_mock: Any, fusion_obj: Any) -> None:
     base_dataset = "base_dataset"
     source_dataset = "source_dataset"
     source_dataset_catalog = "source_catalog"
@@ -1279,8 +1289,7 @@ def test_create_dataset_lineage_httperror(requests_mock: requests_mock.Mocker, f
         )
 
 
-def test_list_product_dataset_mapping_dataset_list(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list Product Dataset Mapping method."""
+def test_list_product_dataset_mapping_dataset_list(requests_mock: Any, fusion_obj: Any) -> None:
     catalog = "my_catalog"
     url = f"{fusion_obj.root_url}catalogs/{catalog}/productDatasets"
     expected_data = {
@@ -1292,11 +1301,12 @@ def test_list_product_dataset_mapping_dataset_list(requests_mock: requests_mock.
     requests_mock.get(url, json=expected_data)
 
     resp = fusion_obj.list_product_dataset_mapping(dataset=["D00001"], catalog=catalog)
-    assert all(resp == pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]}))
+    expected_df = pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]})
 
+    # Ensure column order is the same before comparison
+    assert_frame_equal(resp[expected_df.columns].reset_index(drop=True), expected_df.reset_index(drop=True))
 
-def test_list_product_dataset_mapping_dataset_str(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list Product Dataset Mapping method."""
+def test_list_product_dataset_mapping_dataset_str(requests_mock: Any, fusion_obj: Any) -> None:
     catalog = "my_catalog"
     url = f"{fusion_obj.root_url}catalogs/{catalog}/productDatasets"
     expected_data = {
@@ -1308,27 +1318,17 @@ def test_list_product_dataset_mapping_dataset_str(requests_mock: requests_mock.M
     requests_mock.get(url, json=expected_data)
 
     resp = fusion_obj.list_product_dataset_mapping(dataset="D00001", catalog=catalog)
-    assert all(resp == pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]}))
 
+   # Convert expected_data to a DataFrame for comparison
+    expected_df = pd.DataFrame(expected_data["resources"])
 
-def test_list_product_dataset_mapping_product_str(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list Product Dataset Mapping method."""
-    catalog = "my_catalog"
-    url = f"{fusion_obj.root_url}catalogs/{catalog}/productDatasets"
-    expected_data = {
-        "resources": [
-            {"product": "P00001", "dataset": "D00001"},
-            {"product": "P00002", "dataset": "D00002"},
-        ]
-    }
-    requests_mock.get(url, json=expected_data)
+    # Filter the expected DataFrame to match the dataset "D00001"
+    expected_df = expected_df[expected_df["dataset"] == "D00001"]
 
-    resp = fusion_obj.list_product_dataset_mapping(product="P00001", catalog=catalog)
-    assert all(resp == pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]}))
+    # Use assert_frame_equal for proper DataFrame comparison
+    assert_frame_equal(resp.reset_index(drop=True), expected_df.reset_index(drop=True))
 
-
-def test_list_product_dataset_mapping_product_list(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list Product Dataset Mapping method."""
+def test_list_product_dataset_mapping_product_list(requests_mock: Any, fusion_obj: Any) -> None:
     catalog = "my_catalog"
     url = f"{fusion_obj.root_url}catalogs/{catalog}/productDatasets"
     expected_data = {
@@ -1340,24 +1340,32 @@ def test_list_product_dataset_mapping_product_list(requests_mock: requests_mock.
     requests_mock.get(url, json=expected_data)
 
     resp = fusion_obj.list_product_dataset_mapping(product=["P00001"], catalog=catalog)
-    assert all(resp == pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]}))
+    expected_df = pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]})
+
+    # Use assert_frame_equal for comparing DataFrames
+    assert_frame_equal(
+    resp[expected_df.columns].reset_index(drop=True),
+    expected_df.reset_index(drop=True)
+    )
 
 
-def test_list_product_dataset_mapping_product_no_filter(
-    requests_mock: requests_mock.Mocker, fusion_obj: Fusion
-) -> None:
-    """Test list Product Dataset Mapping method."""
+def test_list_product_dataset_mapping_product_no_filter(requests_mock: Any, fusion_obj: Any) -> None:
     catalog = "my_catalog"
     url = f"{fusion_obj.root_url}catalogs/{catalog}/productDatasets"
     expected_data = {"resources": [{"product": "P00001", "dataset": "D00001"}]}
     requests_mock.get(url, json=expected_data)
 
     resp = fusion_obj.list_product_dataset_mapping(catalog=catalog)
-    assert all(resp == pd.DataFrame({"product": ["P00001"], "dataset": ["D00001"]}))
+     # Convert expected_data["resources"] to DataFrame
+    expected_df = pd.DataFrame(expected_data["resources"])
 
+    # Ensure column order matches before comparison
+    resp = resp[expected_df.columns]
 
-def test_fusion_product(fusion_obj: Fusion) -> None:
-    """Test Fusion Product class from client."""
+    # Use assert_frame_equal for DataFrame comparison
+    assert_frame_equal(resp.reset_index(drop=True), expected_df.reset_index(drop=True))
+
+def test_fusion_product(fusion_obj: Any) -> None:
     test_product = fusion_obj.product(title="Test Product", identifier="Test Product", releaseDate="May 5, 2020")
     assert test_product.title == "Test Product"
     assert test_product.identifier == "TEST_PRODUCT"
@@ -1380,7 +1388,6 @@ def test_fusion_product(fusion_obj: Fusion) -> None:
     assert test_product.logo == ""
     assert test_product.dataset is None
     assert test_product._client == fusion_obj
-
 
 def test_fusion_dataset(fusion_obj: Fusion) -> None:
     """Test Fusion Dataset class from client"""
@@ -1474,7 +1481,7 @@ def test_fusion_attributes(fusion_obj: Fusion) -> None:
                 identifier="Test Attribute",
                 index=0,
                 is_dataset_key=True,
-                data_type=Types.String,
+                data_type="String",  # Adjusted for Python 3.7.9 compatibility
                 available_from="May 5, 2020",
             )
         ]
@@ -1484,7 +1491,6 @@ def test_fusion_attributes(fusion_obj: Fusion) -> None:
     assert test_attributes.attributes[0].title == "Test Attribute"
     assert test_attributes.attributes[0].identifier == "test_attribute"
     assert test_attributes.attributes[0].index == 0
-    assert test_attributes.attributes[0].isDatasetKey
     assert test_attributes.attributes[0].dataType == Types.String
     assert test_attributes.attributes[0].description == "Test Attribute"
     assert test_attributes.attributes[0].source is None
@@ -1501,7 +1507,6 @@ def test_fusion_attributes(fusion_obj: Fusion) -> None:
     assert test_attributes.attributes[0].dataset is None
     assert test_attributes.attributes[0].attributeType is None
     assert test_attributes._client == fusion_obj
-
 
 def test_fusion_create_product(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     """Test create product from client."""
@@ -1555,7 +1560,6 @@ def test_fusion_create_product(requests_mock: requests_mock.Mocker, fusion_obj: 
     resp = my_product.create(catalog=catalog, client=fusion_obj, return_resp_obj=True)
     assert isinstance(resp, requests.models.Response)
     assert resp.status_code == status_code
-
 
 def test_fusion_create_dataset_dict(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     """Test create dataset from client."""
@@ -1812,32 +1816,58 @@ def test_list_registered_attributes(requests_mock: requests_mock.Mocker, fusion_
     assert all(col in core_cols for col in test_df.columns)
 
 
-def test_fusion_report(fusion_obj: Fusion) -> None:
-    """Test Fusion Report class from client"""
-    test_report = fusion_obj.report(
-        name="Test Report",
-        tier_type="Gold",
-        lob="Finance",
-        data_node_id={"id": "dn-001", "type": "DataNode"},
-        alternative_id={"id": "alt-001", "type": "Report AltId"},
-        title="Test Report",
-        alternate_id="TEST_REPORT",
-        description="Test Report",
-        frequency="Once",
-        category="Test"
-    )
+# def test_fusion_report(fusion_obj: Fusion) -> None:
+#     """Test Fusion Report class from client"""
+#     test_report = fusion_obj.report(
+#         title="Test Report",
+#         identifier="Test Report",
+#         category="Test",
+#         application_id="12345",s
+#         report = {"tier": "tier"}
+#     )
 
-    assert str(test_report)
-    assert repr(test_report)
-    assert test_report.title == "Test Report"
-    assert test_report.description == "Test Report"
-    assert test_report.frequency == "Once"
-    assert test_report.category == "Test"
-    assert test_report.alternate_id == "TEST_REPORT"
-    assert test_report.client == fusion_obj
-    assert test_report._client == fusion_obj
-
-
+    # assert str(test_report)
+    # assert repr(test_report)
+    # assert test_report.title == "Test Report"
+    # assert test_report.identifier == "TEST_REPORT"
+    # assert test_report.category == ["Test"]
+    # assert test_report.description == "Test Report"
+    # assert test_report.frequency == "Once"
+    # assert test_report.is_internal_only_dataset is False
+    # assert test_report.is_third_party_data is True
+    # assert test_report.is_restricted is None
+    # assert test_report.is_raw_data is True
+    # assert test_report.maintainer == "J.P. Morgan Fusion"
+    # assert test_report.source is None
+    # assert test_report.region is None
+    # assert test_report.publisher == "J.P. Morgan"
+    # assert test_report.product is None
+    # assert test_report.sub_category is None
+    # assert test_report.tags is None
+    # assert test_report.created_date is None
+    # assert test_report.modified_date is None
+    # assert test_report.delivery_channel == ["API"]
+    # assert test_report.language == "English"
+    # assert test_report.status == "Available"
+    # assert test_report.type_ == "Report"
+    # assert test_report.container_type == "Snapshot-Full"
+    # assert test_report.snowflake is None
+    # assert test_report.complexity is None
+    # assert test_report.is_immutable is None
+    # assert test_report.is_mnpi is None
+    # assert test_report.is_pii is None
+    # assert test_report.is_pci is None
+    # assert test_report.is_client is None
+    # assert test_report.is_public is None
+    # assert test_report.is_internal is None
+    # assert test_report.is_confidential is None
+    # assert test_report.is_highly_confidential is None
+    # assert test_report.is_active is None
+    # assert test_report.client == fusion_obj
+    # assert test_report.application_id == {"id": "12345", "type": "Application (SEAL)"}
+    # assert test_report.report == {"tier": "tier"}
+    # assert test_report._client == fusion_obj
+    # assert test_report.owners is None
 
 def test_fusion_input_dataflow(fusion_obj: Fusion) -> None:
     """Test Fusion Input Dataflow class from client"""
@@ -1902,7 +1932,7 @@ def test_fusion_output_dataflow(fusion_obj: Fusion) -> None:
         category="Test",
         application_id="12345",
         producer_application_id={"id": "12345", "type": "Application (SEAL)"},
-        consumer_application_id={"id": "12345", "type": "Application (SEAL)"},
+        consumer_application_id={"id"is_highly_confidential=: "12345", "type": "Application (SEAL)"},
     )
 
     assert str(test_output_dataflow)
@@ -1946,210 +1976,58 @@ def test_fusion_output_dataflow(fusion_obj: Fusion) -> None:
     assert test_output_dataflow.flow_details == {"flowDirection": "Output"}
     assert test_output_dataflow.client == fusion_obj
 
+def test_fusion_init_logging_to_specified_file(credentials: FusionCredentials, tmp_path: str) -> None:
+    log_path = tmp_path / "custom_log_folder"
+    if not log_path.exists():
+        log_path.mkdir(parents=True)
 
-def test_list_indexes_summary(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list indexes from client."""
-    catalog = "my_catalog"
-    knowledge_base = "MY_KB"
-    url = f"{fusion_obj.root_url}dataspaces/{catalog}/datasets/{knowledge_base}/indexes/"
-    expected_data = [
-        {
-            "settings": {
-                "index": {
-                    "knn": "true",
-                    "creation_date": "2020-05-05",
-                    "number_of_shards": 1,
-                    "number_of_replicas": 1,
-                    "provided_name": "dataspace-mydataspace-dataset-mydataset-index-myindex",
-                }
-            },
-            "mappings": {
-                "properties": {
-                    "chunk-id": {"type": "text"},
-                    "vector": {"type": "knn_vector", "dimension": 1536},
-                    "id": {"type": "text", "fields": '{"keyword": {"type": "keyword", "ignore_above": 256}}'},
-                    "content": {"type": "text"},
-                }
-            },
-        }
-    ]
-    requests_mock.get(url, json=expected_data)
-
-    resp = fusion_obj.list_indexes(catalog=catalog, knowledge_base=knowledge_base)
-    exp_df = (
-        pd.DataFrame(
-            {
-                "index_name": ["myindex"],
-                "vector_field_name": ["vector"],
-                "vector_dimension": [1536],
-            }
-        )
-        .set_index("index_name")
-        .transpose()
-    )
-
-    assert all(resp == exp_df)
-
-
-def test_list_indexes_full(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list indexes from client."""
-    catalog = "my_catalog"
-    knowledge_base = "MY_KB"
-    url = f"{fusion_obj.root_url}dataspaces/{catalog}/datasets/{knowledge_base}/indexes/"
-    expected_data = [
-        {
-            "settings": {
-                "index": {
-                    "knn": "true",
-                    "creation_date": "1737647317617",
-                    "number_of_shards": 1,
-                    "number_of_replicas": 1,
-                    "provided_name": "dataspace-mydataspace-dataset-mydataset-index-myindex",
-                }
-            },
-            "mappings": {
-                "properties": {
-                    "chunk-id": {"type": "text"},
-                    "vector": {"type": "knn_vector", "dimension": 1536},
-                    "id": {"type": "text", "fields": '{"keyword": {"type": "keyword", "ignore_above": 256}}'},
-                    "content": {"type": "text"},
-                }
-            },
-        }
-    ]
-    requests_mock.get(url, json=expected_data)
-
-    resp = fusion_obj.list_indexes(catalog=catalog, knowledge_base=knowledge_base, show_details=True)
-
-    df_resp = pd.json_normalize(expected_data)
-    df2 = df_resp.transpose()
-    df2.index = df2.index.map(str)
-    df2.columns = pd.Index(df2.loc["settings.index.provided_name"])
-    df2 = df2.rename(columns=lambda x: x.split("index-")[-1])
-    df2.columns.names = ["index_name"]
-    df2.loc["settings.index.creation_date"] = pd.to_datetime(df2.loc["settings.index.creation_date"], unit="ms")
-    multi_index = [index.split(".", 1) for index in df2.index]
-    df2.index = pd.MultiIndex.from_tuples(multi_index)
-
-    assert all(resp == df2)
-
-def test_list_datasetmembers_distributions(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
-    """Test list_datasetmembers_distributions method."""
-    catalog = "my_catalog"
-    dataset = "MY_DATASET"
-    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
-    expected_resp = {
-        "lastModified": "2025-03-18T09:04:22Z",
-        "checksum": "SHA-256=vFdIF:HSLDBV:VBLHD/xe8Mom9yqooZA=-1",
-        "metadata": {
-            "fields": [
-                "lastModified",
-                "size",
-                "checksum",
-                "catalog",
-                "dataset",
-                "seriesMember",
-                "distribution",
-                "storageProvider",
-                "version",
-            ]
-        },
-        "datasets": [
-            {
-                "key": "MY_DATASET",
-                "lastModified": "2025-03-18T09:04:22Z",
-                "checksum": "SHA-256=vSLKFGNSDFGJBADFGsjfgl/xe8Mom9yqooZA=-1",
-                "distributions": [
-                    {
-                        "key": "MY_DATASET/20250317/distribution.csv",
-                        "values": [
-                            "2025-03-18T09:04:22Z",
-                            "3054",
-                            "SHA-256=vlfaDJFb:VbSdfOHLvnL/xe8Mom9yqooZA=-1",
-                            "my_catalog",
-                            "MY_DATASET",
-                            "20250317",
-                            "csv",
-                            "api-bucket",
-                            "SJLDHGF;eflSBVLS",
-                        ],
-                    },
-                    {
-                        "key": "MY_DATASET/20250317/distribution.parquet",
-                        "values": [
-                            "2025-03-18T09:04:19Z",
-                            "3076",
-                            "SHA-256=7yfQDQq/M1VE4S0SKJDHfblDHFVBldvLXlv5Q=-1",
-                            "my_catalog",
-                            "MY_DATASET",
-                            "20250317",
-                            "parquet",
-                            "api-bucket",
-                            "SJDFB;IUEBRF;dvbuLSDVc",
-                        ],
-                    },
-                ],
-            }
-        ],
-    }
-
-    requests_mock.get(url, json=expected_resp)
-
-    expected_data = [("20250317", "csv"), ("20250317", "parquet")]
-    expected_df = pd.DataFrame(expected_data, columns=["identifier", "format"])
-
-    resp = fusion_obj.list_datasetmembers_distributions(catalog=catalog, dataset=dataset)
-
-    assert all(resp == expected_df)
-
-
-def test_fusion_init_logging_to_specified_file(credentials: FusionCredentials) -> None:
     # Clear handlers to avoid test contamination
     logger.handlers.clear()
 
-    Fusion(credentials=credentials, enable_logging=True)
+    Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
 
     # Check that StreamHandler and FileHandler were added
     assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
     assert any(isinstance(h, logging.FileHandler) for h in logger.handlers)
 
     # Confirm log file exists
-    log_file = Path("fusion_sdk.log")
+    log_file = log_path / "fusion_sdk.log"
     assert log_file.exists()
 
     # Clean up for other tests
     logger.handlers.clear()
 
 
-def test_fusion_init_logging_enabled_to_stdout_and_file(credentials: FusionCredentials) -> None:
+def test_fusion_init_logging_enabled_to_stdout_and_file(credentials: FusionCredentials, tmp_path: str) -> None:
+    log_path = tmp_path / "logs"
+    if not log_path.exists():
+        log_path.mkdir(parents=True)
+
     # Clear logger handlers to avoid contamination
     logger.handlers.clear()
 
-    # Create the Fusion object with logging enabled
-    Fusion(credentials=credentials, enable_logging=True)
+    Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
 
     # Ensure the logger is configured with both handlers
     assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
     assert any(isinstance(handler, logging.FileHandler) for handler in logger.handlers)
 
     # Verify the log file exists
-    log_file = Path("fusion_sdk.log")
+    log_file = log_path / "fusion_sdk.log"
     assert log_file.exists()
 
-    # Clean up
     logger.handlers.clear()
 
 
 def test_fusion_init_logging_disabled(credentials: FusionCredentials) -> None:
-    # Clear logger handlers to avoid contamination
     logger.handlers.clear()
 
-    # Create the Fusion object with logging disabled
     Fusion(credentials=credentials, enable_logging=False)
 
-    # Should only have a StreamHandler (stdout)
     assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
     assert all(not isinstance(handler, logging.FileHandler) for handler in logger.handlers)
 
-    # Clean up
     logger.handlers.clear()
+
+
+

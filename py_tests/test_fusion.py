@@ -16,6 +16,7 @@ from fusion.attributes import Attribute
 from fusion.exceptions import APIResponseError, FileFormatError
 from fusion.fusion import Fusion, logger
 from fusion.fusion_types import Types
+from fusion.credentials import FusionCredentials
 from fusion.utils import _normalise_dt_param, distribution_to_url
 
 

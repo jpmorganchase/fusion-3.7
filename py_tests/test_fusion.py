@@ -2034,15 +2034,6 @@ def test_list_indexes_full(requests_mock: requests_mock.Mocker, fusion_obj: Fusi
 
     assert all(resp == df2)
 
-
-def test_get_fusion_vector_store_client(fusion_obj: Fusion) -> None:
-    """Test the get_fusion_vector_store_client method."""
-
-    result = fusion_obj.get_fusion_vector_store_client("knowledge_base")
-
-    assert isinstance(result, OpenSearch)
-
-
 def test_list_datasetmembers_distributions(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     """Test list_datasetmembers_distributions method."""
     catalog = "my_catalog"

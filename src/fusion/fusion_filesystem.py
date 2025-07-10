@@ -610,7 +610,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
 
         rpath = self._decorate_url(rpath) if isinstance(rpath, str) else rpath
 
-        if not lfs.exists(lpath):
+        if not lfs.exists(Path(lpath).parent):
             try:
                 lfs.mkdir(Path(lpath).parent, create_parents=True)
             except Exception as ex:  # noqa: BLE001

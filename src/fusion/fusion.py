@@ -1039,8 +1039,6 @@ class Fusion:
             fs_fusion,
             data,
             data_map_df,
-            parallel=False,
-            n_par=1,
             multipart=multipart,            
             chunk_size=chunk_size,
             show_progress=show_progress,

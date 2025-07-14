@@ -304,9 +304,8 @@ class Dataset(metaclass=CamelCaseMeta):
             else cls._from_series(data.reset_index(drop=True).iloc[0])
         )
 
-    @classmethod
     def from_object(
-        cls,
+        self,
         dataset_source: Union[Dataset, dict, str, pd.Series],
     ) -> Dataset:
         """Instantiate a Dataset object from a Dataset object, dictionary, JSON string, path to CSV, or pandas Series.
@@ -324,18 +323,18 @@ class Dataset(metaclass=CamelCaseMeta):
         if isinstance(dataset_source, Dataset):
             dataset = dataset_source
         elif isinstance(dataset_source, dict):
-            dataset = cls._from_dict(dataset_source)
+            dataset = self._from_dict(dataset_source)
         elif isinstance(dataset_source, str):
             if _is_json(dataset_source):
-                dataset = cls._from_dict(js.loads(dataset_source))
+                dataset = self._from_dict(js.loads(dataset_source))
             else:
-                dataset = cls._from_csv(dataset_source)
+                dataset = self._from_csv(dataset_source)
         elif isinstance(dataset_source, pd.Series):
-            dataset = cls._from_series(dataset_source)
+            dataset = self._from_series(dataset_source)
         else:
             raise TypeError(f"Could not resolve the object provided: {dataset_source}")
 
-        dataset.client = cls._client
+        dataset.client = self._client
 
         return dataset
 

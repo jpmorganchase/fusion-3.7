@@ -6,10 +6,10 @@ import logging
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-from typing_extensions import TypedDict
 
 import numpy as np
 import pandas as pd
+from typing_extensions import TypedDict
 
 from .utils import (
     CamelCaseMeta,

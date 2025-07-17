@@ -169,15 +169,9 @@ class Report(metaclass=CamelCaseMeta):
             }
 
 
-
-            is_bcbs = report_data.get("is_bcbs239_program")
-            report_data["is_bcbs239_program"] = is_bcbs == "Yes" if is_bcbs else None
-
-            is_mnpi_inicator = report_data.get("mnpi_indicator")
-            report_data["mnpi_indicator"] = is_mnpi_inicator == "Yes" if is_mnpi_inicator else None
-
-            is_regulatory_related = report_data.get("regulatory_related")
-            report_data["regulatory_related"] = is_regulatory_related == "Yes" if is_regulatory_related else None
+            report_data["is_bcbs239_program"] = make_bool(report_data.get("is_bcbs239_program"))
+            report_data["mnpi_indicator"] = make_bool(report_data.get("mnpi_indicator"))
+            report_data["regulatory_related"] = make_bool(report_data.get("regulatory_related"))
 
 
 

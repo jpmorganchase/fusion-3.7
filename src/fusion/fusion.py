@@ -20,6 +20,8 @@ from typing_extensions import TypedDict  # Needed in 3.7 since TypedDict wasn't 
 
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 
+
+
 from .attributes import Attribute, Attributes
 from .credentials import FusionCredentials
 from .dataflow import InputDataFlow, OutputDataFlow
@@ -590,7 +592,7 @@ class Fusion:
                 url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}"
                 resp = self.session.get(url)
                 if resp.status_code == HTTPStatus.OK:
-                    rep_df = pd.json_normalize(resp.json())
+                    rep_df = json_normalize(resp.json())
                     if not display_all_columns:
                         rep_df = rep_df[[c for c in key_columns if c in rep_df.columns]]
                     if output:
@@ -603,7 +605,7 @@ class Fusion:
                 resp = self.session.post(url)
                 if resp.status_code == HTTPStatus.OK:
                     data = resp.json()
-                    rep_df = pd.json_normalize(data.get("content", data))
+                    rep_df = json_normalize(data.get("content", data))
                     if not display_all_columns:
                         rep_df = rep_df[[c for c in key_columns if c in rep_df.columns]]
                     if output:
@@ -625,7 +627,7 @@ class Fusion:
         resp = self.session.get(url)
 
         if resp.status_code == HTTPStatus.OK:
-            rep_df = pd.json_normalize(resp.json())
+            rep_df = json_normalize(resp.json())
             if not display_all_columns:
                 key_columns = [
                     "id", "path", "status", "dataType", "isMandatory",
@@ -1709,6 +1711,8 @@ class Fusion:
         frequency: str,
         category: str,
         sub_category: str,
+
+
         data_node_id: Dict[str, str],
         regulatory_related: bool,
         tier_type: Optional[str] = None, 

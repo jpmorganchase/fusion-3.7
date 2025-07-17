@@ -76,7 +76,7 @@ class ReportAttributes:
     _client: Optional[Fusion] = None
 
     def __str__(self) -> str:
-        return "[\n" + ",\n ".join(f"{attr.__repr__()}" for attr in self.attributes) + "\n]" if self.attributes else "[]"
+        return "[\n" + ",\n ".join(f"{attr.__repr__()}" for attr in self.attributes) + "\n]" if self.attributes else "[]" # noqa: E501
 
     def __repr__(self) -> str:
         return self.__str__()

@@ -167,9 +167,18 @@ class Report(metaclass=CamelCaseMeta):
                 "dataNodeType": cls.map_application_type(report_data.pop("data_node_type", None)),
             }
 
-            report_data["is_bcbs239_program"] = report_data.get("is_bcbs239_program") == "Yes" if report_data.get("is_bcbs239_program") else None
-            report_data["mnpi_indicator"] = report_data.get("mnpi_indicator") == "Yes" if report_data.get("mnpi_indicator") else None
-            report_data["regulatory_related"] = report_data.get("regulatory_related") == "Yes" if report_data.get("regulatory_related") else None
+
+
+            is_bcbs = report_data.get("is_bcbs239_program")
+            report_data["is_bcbs239_program"] = is_bcbs == "Yes" if is_bcbs else None
+
+            is_mnpi_inicator = report_data.get("mnpi_indicator")
+            report_data["mnpi_indicator"] = is_mnpi_inicator == "Yes" if is_mnpi_inicator else None
+
+            is_regulatory_related = report_data.get("regulatory_related")
+            report_data["regulatory_related"] = is_regulatory_related == "Yes" if is_regulatory_related else None
+
+
 
             tier_val = report_data.get("tier_designation")
             report_data["tier_designation"] = cls.map_tier_type(tier_val) if tier_val else None
@@ -238,7 +247,11 @@ class Report(metaclass=CamelCaseMeta):
         client: Fusion,
         return_resp_obj: bool = False,
     ) -> Optional[requests.Response]:
-        url = f"{client._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
+  
+        base_url = client._get_new_root_url()
+        endpoint = f"/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
+        url = f"{base_url}{endpoint}"
+
         resp = client.session.post(url, json=mappings)
         requests_raise_for_status(resp)
         return resp if return_resp_obj else None
@@ -310,7 +323,7 @@ class Reports:
             report.create()
 
     @classmethod
-    def from_object(cls, source: Union[pd.DataFrame, List[Dict[str, Any]], str], client: Optional[Fusion] = None) -> Reports:
+    def from_object(cls, source: Union[pd.DataFrame, List[Dict[str, Any]], str], client: Optional[Fusion] = None) -> Reports: # noqa: E501
         import json
         if isinstance(source, pd.DataFrame):
             return cls.from_dataframe(source, client=client)

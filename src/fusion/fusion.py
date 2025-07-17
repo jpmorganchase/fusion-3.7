@@ -20,8 +20,6 @@ from typing_extensions import TypedDict  # Needed in 3.7 since TypedDict wasn't 
 
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 
-
-
 from .attributes import Attribute, Attributes
 from .credentials import FusionCredentials
 from .dataflow import InputDataFlow, OutputDataFlow

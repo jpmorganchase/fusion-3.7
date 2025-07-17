@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from http import HTTPStatus
 import json as js
 import logging
 import re
@@ -27,7 +28,7 @@ from .exceptions import APIResponseError, CredentialError, FileFormatError
 from .fusion_filesystem import FusionHTTPFileSystem
 from .fusion_types import Types
 from .product import Product
-from .report import Report
+from .report import Report, ReportsWrapper
 from .utils import (
     RECOGNIZED_FORMATS,
     cpu_count,
@@ -236,25 +237,44 @@ class Fusion:
                 new_root_url = new_root_url[:-4]  # remove "/v1/"
 
         return new_root_url
-    
-    
+
     def report_attribute(
         self,
-        name: str,
         title: str,
+        sourceIdentifier: Optional[str] = None,
         description: Optional[str] = None,
         technicalDataType: Optional[str] = None,
         path: Optional[str] = None,
-        dataPublisher: Optional[str] = None,
     ) -> ReportAttribute:
-        """Instantiate a ReportAttribute object with this client for metadata creation."""
+        """
+        Instantiate a ReportAttribute object with this client for metadata creation.
+
+        Args:
+            title (str): The display title of the attribute (required).
+            sourceIdentifier (str , optional): A unique identifier or reference ID from the source system.
+            description (str , optional): A longer description of the attribute.
+            technicalDataType (str , optional): The technical data type (e.g., string, int, boolean).
+            path (str , optional): The hierarchical path or logical grouping for the attribute.
+
+        Returns:
+            ReportAttribute: A single ReportAttribute instance with the client context attached.
+
+        Example:
+            >>> fusion = Fusion()
+            >>> attr = fusion.report_attribute(
+            ...     title="Customer ID",
+            ...     sourceIdentifier="cust_id_123",
+            ...     description="Unique customer identifier",
+            ...     technicalDataType="String",
+            ...     path="Customer.Details"
+            ... )
+        """
         attribute_obj = ReportAttribute(
-            name=name,
+            sourceIdentifier=sourceIdentifier,
             title=title,
             description=description,
             technicalDataType=technicalDataType,
             path=path,
-            dataPublisher=dataPublisher,
         )
         attribute_obj.client = self
         return attribute_obj
@@ -262,13 +282,32 @@ class Fusion:
 
     def report_attributes(
         self,
-        attributes: Optional[List[ReportAttribute]] = None,
+        attributes: Optional[list[ReportAttribute]] = None,
     ) -> ReportAttributes:
-        """Instantiate a ReportAttributes collection with this client for managing multiple attributes."""
+        """
+        Instantiate a ReportAttributes collection with this client, allowing batch creation or manipulation.
+
+        Args:
+            attributes (list[ReportAttribute] , optional): A list of ReportAttribute objects to include.
+                Defaults to an empty list if not provided.
+
+        Returns:
+            ReportAttributes: A ReportAttributes collection object with the client context attached.
+
+        Example:
+            >>> fusion = Fusion()
+            >>> attr1 = fusion.report_attribute(title="Code")
+            >>> attr2 = fusion.report_attribute(title="Label")
+            >>> attr_collection = fusion.report_attributes([attr1, attr2])
+            >>> attr_collection.create(report_id="abc-123")
+        """
         attributes_obj = ReportAttributes(attributes=attributes or [])
         attributes_obj.client = self
         return attributes_obj
 
+
+    def reports(self) -> ReportsWrapper:
+        return ReportsWrapper(client=self)
 
     class AttributeTermMapping(TypedDict):
         attribute: Dict[str, str]
@@ -279,24 +318,36 @@ class Fusion:
     def link_attributes_to_terms(
         self,
         report_id: str,
-        mappings: List[AttributeTermMapping],
+        mappings: List[Report.AttributeTermMapping],
         return_resp_obj: bool = False,
-    ) -> Optional[requests.Response]:
+    ) -> requests.Response :
         """
-        Links attributes to business terms for a report using pre-formatted mappings.
+        Link one or more report attributes to business glossary terms.
+
+        Each mapping should follow this format:
+            {
+                "attribute": {"id": "attribute-id"},
+                "term": {"id": "term-id"},
+                "isKDE": True  # Optional; defaults to True if not provided
+            }
+
+        This method wraps `Report.link_attributes_to_terms` and automatically attaches the Fusion client.
         """
-        # Basic validation
-        for i, m in enumerate(mappings):
-            if not isinstance(m, dict):
-                raise ValueError(f"Mapping at index {i} is not a dictionary.")
-            if not ("attribute" in m and "term" in m and "isKDE" in m):
-                raise ValueError(f"Mapping at index {i} must include 'attribute', 'term', and 'isKDE'.")
 
-        url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements/businessTerms"
-        response = self.session.post(url, json=mappings)
-        requests_raise_for_status(response)
+        processed_mappings = []
+        for mapping in mappings:
+            new_mapping = mapping.copy()
+            if "isKDE" not in new_mapping:
+                new_mapping["isKDE"] = True 
+            processed_mappings.append(new_mapping)
 
-        return response if return_resp_obj else None
+        return Report.link_attributes_to_terms(
+            report_id=report_id,
+            mappings=processed_mappings,
+            client=self,
+            return_resp_obj=return_resp_obj
+        )
+
 
     def list_catalogs(self, output: bool = False) -> pd.DataFrame:
         """Lists the catalogs available to the API account.
@@ -524,75 +575,43 @@ class Fusion:
     
          
     def list_reports(
-        self,
-        report_id: Optional[str] = None,
-        output: bool = False,
-        display_all_columns: bool = False,
-    ) -> pd.DataFrame:
-        """Retrieve a single report or all reports from the Fusion system.
+            self,
+            report_id: str | None = None,
+            output: bool = False,
+            display_all_columns: bool = False,
+        ) -> pd.DataFrame:
+            """Retrieve a single report or all reports from the Fusion system."""
+            key_columns = [
+                "id", "name", "alternateId", "tierType", "frequency",
+                "category", "subCategory", "reportOwner", "lob", "description"
+            ]
 
-        If a `report_id` is provided, this function fetches a specific report
-        using GET /v1/reports/{reportId}. If not, it retrieves all available
-        reports using POST /v1/reports/list with no filters.
-
-        The result is returned as a pandas DataFrame, optionally filtered to
-        show only key metadata fields.
-
-        Args:
-            report_id (str, optional): Unique identifier for a report. If provided,
-                a GET request is made to retrieve that report.
-            output (bool, optional): If True, print the resulting DataFrame. Defaults to False.
-            display_all_columns (bool, optional): If True, return all fields from the response.
-                Otherwise, return a subset of key fields.
-
-        Returns:
-            pandas.DataFrame: A dataframe with one or more report records.
-        """
-        key_columns = [
-            "id",
-            "name",
-            "alternateId",
-            "tierType",
-            "frequency",
-            "category",
-            "subCategory",
-            "reportOwner",
-            "lob",
-            "description"
-        ]
-
-        if report_id:
-            url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}"
-            resp = self.session.get(url)
-            status_success = 200
-            if resp.status_code == status_success:
-                resp_json = resp.json()
-                rep_df = pd.json_normalize(resp_json)
-                if not display_all_columns:
-                    cols = [c for c in key_columns if c in rep_df.columns]
-                    rep_df = rep_df[cols]
-                if output:
-                    print(rep_df) #noqa
-                return rep_df
+            if report_id:
+                url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}"
+                resp = self.session.get(url)
+                if resp.status_code == HTTPStatus.OK:
+                    rep_df = pd.json_normalize(resp.json())
+                    if not display_all_columns:
+                        rep_df = rep_df[[c for c in key_columns if c in rep_df.columns]]
+                    if output:
+                        pass
+                    return rep_df
+                else:
+                    resp.raise_for_status()
             else:
-                resp.raise_for_status()
-
-        else:
-            url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/list"
-            resp = self.session.post(url)
-            status_success = 200  # No body
-            if resp.status_code == status_success:
-                data = resp.json()
-                rep_df = pd.json_normalize(data.get("content", data))
-                if not display_all_columns:
-                    cols = [c for c in key_columns if c in rep_df.columns]
-                    rep_df = rep_df[cols]
-                if output:
-                    print(rep_df) #noqa
-                return rep_df
-            else:
-                resp.raise_for_status()
-
+                url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/list"
+                resp = self.session.post(url)
+                if resp.status_code == HTTPStatus.OK:
+                    data = resp.json()
+                    rep_df = pd.json_normalize(data.get("content", data))
+                    if not display_all_columns:
+                        rep_df = rep_df[[c for c in key_columns if c in rep_df.columns]]
+                    if output:
+                        pass
+                    return rep_df
+                else:
+                    resp.raise_for_status()
+            return pd.DataFrame(columns=key_columns)
 
 
     def list_report_attributes(
@@ -601,50 +620,25 @@ class Fusion:
         output: bool = False,
         display_all_columns: bool = False,
     ) -> pd.DataFrame:
-        """Retrieve the attributes (report elements) of a specific report.
-
-        This function calls the GET /v1/reports/{reportId}/reportElements endpoint to
-        fetch detailed attributes of a given report. It returns the result as a
-        pandas DataFrame for easier analysis and processing.
-
-        Args:
-            report_id (str): The unique identifier of the report whose attributes
-                (report elements) are to be retrieved.
-            output (bool, optional): If True, print the resulting DataFrame. Defaults to False.
-            display_all_columns (bool, optional): If True, return all fields from the response.
-                Otherwise, return only a subset of key fields.
-
-        Returns:
-            pandas.DataFrame: A dataframe with a row for each report element (attribute).
-        """
+        """Retrieve the attributes (report elements) of a specific report."""
         url = f"{self._get_new_root_url()}/api/corelineage-service/v1/reports/{report_id}/reportElements"
         resp = self.session.get(url)
-        status_success = 200
-        
-        if resp.status_code == status_success:
-            data = resp.json()
-            rep_df = pd.json_normalize(data)
-            
-            if not display_all_columns:
-                cols = [
-                    "id",
-                    "path",
-                    "status",
-                    "dataType",
-                    "isMandatory",
-                    "description",
-                    "createdBy",
-                    "name"
-                ]
-                cols = [c for c in cols if c in rep_df.columns]
-                rep_df = rep_df[cols]
 
+        if resp.status_code == HTTPStatus.OK:
+            rep_df = pd.json_normalize(resp.json())
+            if not display_all_columns:
+                key_columns = [
+                    "id", "path", "status", "dataType", "isMandatory",
+                    "description", "createdBy", "name"
+                ]
+                rep_df = rep_df[[c for c in key_columns if c in rep_df.columns]]
             if output:
-                print(rep_df)#noqa
+                pass
             return rep_df
         else:
             resp.raise_for_status()
-
+        return pd.DataFrame(columns=["id", "path", "status", "dataType", "isMandatory", 
+                                     "description", "createdBy", "name"])
 
     def dataset_resources(self, dataset: str, catalog: Optional[str] = None, output: bool = False) -> pd.DataFrame:
         """List the resources available for a dataset, currently this will always be a datasetseries.
@@ -1710,95 +1704,71 @@ class Fusion:
     
     def report(  # noqa: PLR0913
         self,
-        name: str,
-        tier_type: str,
-        lob: str,
-        data_node_id: dict[str, str],
-        alternative_id: dict[str, str],
-        title: str | None = None,
-        alternate_id: str | None = None,
-        description: str | None = None,
-        frequency: str | None = None,
-        category: str | None = None,
-        sub_category: str | None = None,
-        report_inventory_name: str | None = None,
-        report_inventory_id: str | None = None,
-        report_owner: str | None = None,
-        sub_lob: str | None = None,
-        is_bcbs239_program: bool | None = None,
-        risk_area: str | None = None,
-        risk_stripe: str | None = None,
-        sap_code: str | None = None,
-        sourced_object: str | None = None,
-        domain: dict[str, str | bool] | None = None,
-        data_model_id: dict[str, str] | None = None,
-        **kwargs: Any
+        description: str,
+        title: str,
+        frequency: str,
+        category: str,
+        sub_category: str,
+        data_node_id: Dict[str, str],
+        regulatory_related: bool,
+        tier_type: Optional[str] = None, 
+        lob: Optional[str] = None,
+        alternative_id: Optional[dict[str, str]] = None,
+        sub_lob: Optional[str] = None,
+        is_bcbs239_program: Optional[bool] = None,
+        risk_area: Optional[str] = None,
+        risk_stripe: Optional[str] = None,
+        sap_code: Optional[str] = None,
+        domain: Dict[str, str | bool]  = None,
+        **kwargs: Any,
     ) -> Report:
-        """Instantiate a Report object with this client for metadata creation.
+        """
+        Instantiate a Report object with the current Fusion client attached.
 
         Args:
-            name (str): Name of the report.
-            tier_type (str): Tier type classification.
-            alternate_id (str): Alternate ID used to identify the report.
-            data_node_id (dict[str, str]): Associated data node identifier (as a dictionary).
-            title (str, optional): Report title.
-            frequency (str, optional): Frequency of the report.
-            category (str, optional): High-level category of the report.
-            sub_category (str, optional): Sub-category of the report.
-            report_inventory_name (str, optional): Inventory name for internal tracking.
-            report_owner (str, optional): Name of the report owner.
+            description (str): Description of the report.
+            title (str): Title of the report or process.
+            frequency (str): Reporting frequency (e.g., Monthly, Quarterly).
+            category (str): Main classification of the report.
+            sub_category (str): Sub-classification under the main category.
+            data_node_id (dict[str, str]): Associated data node details. Should include "name" and "dataNodeType".
+            regulatory_related (bool): Whether the report is regulatory-designated. This is a required field.
+            tier_type (str, optional): Tier classification (e.g., "Tier 1", "Non Tier 1").
             lob (str, optional): Line of business.
-            sub_lob (str, optional): Sub line of business.
-            is_bcbs239_program (bool, optional): Flag for BCBS 239 compliance. Defaults to False.
-            risk_area (str, optional): Risk area associated with the report.
-            riskstripe (str, optional): Riskstripe code.
-            sap_code (str, optional): SAP code.
-            domain (str, optional): Domain classification.
-            sourced_object (str, optional): Source object reference.
-            alternative_id (dict[str, str], optional): Alternate identifiers map.
-            data_model_id (dict[str, str], optional): Associated data model.
-            d (str, optional): Unique identifier for the report.
-            description (str, optional): Description of the report.
-            report_inventory_id (str, optional): Internal report inventory ID.
-            created_service (str, optional): Originating service name.
-            originator_firm_id (str, optional): ID of the originating firm.
-            is_instance (bool, optional): Whether this is a report instance.
-            version (str, optional): Version of the report.
-            status (str, optional): Status of the report.
-            created_by (str, optional): Creator's identifier.
-            created_datetime (str, optional): Timestamp of creation.
-            modified_by (str, optional): Last modifier's identifier.
-            modified_datetime (str, optional): Timestamp of last modification.
-            approved_by (str, optional): Approver's identifier.
-            approved_datetime (str, optional): Timestamp of approval.
-            kwargs (Any): Additional fields.
+            alternative_id (dict[str, str], optional): Alternate identifiers for the report.
+            sub_lob (str, optional): Subdivision of the line of business.
+            is_bcbs239_program (bool, optional): Whether the report is part of the BCBS 239 program.
+            risk_area (str, optional): Risk area covered by the report.
+            risk_stripe (str, optional): Stripe or classification under the risk area.
+            sap_code (str, optional): SAP financial tracking code.
+            domain (dict[str, str | bool], optional): Domain details. Typically contains a "name" key.
+            **kwargs (Any): Additional optional fields such as:
+                - tier_designation (str)
+                - region (str)
+                - mnpi_indicator (bool)
+                - country_of_reporting_obligation (str)
+                - primary_regulator (str)
 
         Returns:
-            Report: Fusion Report class instance.
+            Report: A Report object ready for API upload or further manipulation.
         """
         report_obj = Report(
-            name=name,
-            tier_type=tier_type,
-            lob=lob,
-            data_node_id=data_node_id,
-            alternative_id=alternative_id,
             title=title,
-            alternate_id=alternate_id,
             description=description,
             frequency=frequency,
             category=category,
             sub_category=sub_category,
-            report_inventory_name=report_inventory_name,
-            report_inventory_id=report_inventory_id,
-            report_owner=report_owner,
+            data_node_id=data_node_id,
+            regulatory_related=regulatory_related,
+            tier_type=tier_type,
+            lob=lob,
+            alternative_id=alternative_id,
             sub_lob=sub_lob,
             is_bcbs239_program=is_bcbs239_program,
             risk_area=risk_area,
             risk_stripe=risk_stripe,
             sap_code=sap_code,
-            sourced_object=sourced_object,
             domain=domain,
-            data_model_id=data_model_id,
             **kwargs,
         )
         report_obj.client = self

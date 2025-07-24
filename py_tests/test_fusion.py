@@ -36,22 +36,19 @@ def mock_response_data() -> Dict[str, Any]:
     return {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
 
 
-def test_call_for_dataframe(mock_response_data: Dict[str, Any]) -> None:
-    """Test `_call_for_dataframe` static method."""
+def test_call_for_dataframe(requests_mock: Any, mock_response_data: Dict[str, Any]) -> None:
+    """Test `_call_for_dataframe` static method with requests_mock."""
     url = "https://api.example.com/data"
+    requests_mock.get(url, json=mock_response_data)
 
-    with patch("requests.Session.get") as mock_get:
-        mock_get.return_value.json.return_value = mock_response_data
-        mock_get.return_value.raise_for_status = lambda: None
+    session = requests.Session()
+    df = Fusion._call_for_dataframe(url, session)
 
-        session = requests.Session()
-        df = Fusion._call_for_dataframe(url, session)
-
-        assert isinstance(df, pd.DataFrame)
-        assert df.shape == (2, 2)
-        assert list(df.columns) == ["id", "name"]
-        assert df.iloc[0]["id"] == 1
-        assert df.iloc[0]["name"] == "Resource 1"
+    assert isinstance(df, pd.DataFrame)
+    assert df.shape == (2, 2)
+    assert list(df.columns) == ["id", "name"]
+    assert df.iloc[0]["id"] == 1
+    assert df.iloc[0]["name"] == "Resource 1"
 
 
 def test_call_for_bytes_object() -> None:
@@ -1874,7 +1871,7 @@ def test_fusion_input_dataflow(fusion_obj: Fusion) -> None:
     test_input_dataflow = fusion_obj.input_dataflow(
         title="Test Input Dataflow",
         identifier="Test Input Dataflow",
-        category="Test",
+               category="Test",
         application_id="12345",
         producer_application_id={"id": "12345", "type": "Application (SEAL)"},
         consumer_application_id={"id": "12345", "type": "Application (SEAL)"},

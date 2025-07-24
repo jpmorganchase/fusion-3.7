@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import json
 import logging
 import time
 from copy import deepcopy
@@ -23,7 +24,7 @@ from fsspec.utils import nullcontext
 from fusion.exceptions import APIResponseError
 
 from .credentials import FusionCredentials
-from .utils import cpu_count, get_client, get_default_fs, get_session
+from .utils import _merge_responses, cpu_count, get_client, get_default_fs, get_session
 
 logger = logging.getLogger(__name__)
 VERBOSE_LVL = 25
@@ -79,6 +80,13 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             self.credentials, kwargs["client_kwargs"].get("root_url")
         )
         super().__init__(*args, **kwargs)
+
+    def _extract_token_from_response(self, response: Any, token_header: str = "x-jpmc-next-token") -> Any:
+        """Get pagination token from response headers if available"""
+        if response and hasattr(response, "headers") and token_header in response.headers:
+            token = response.headers[token_header]
+            return token
+        return None
 
     def _raise_not_found_for_status(self, response: Any, url: str) -> None:
         try:
@@ -154,16 +162,30 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             Dict containing json-ified return from endpoint.
         """
         url = self._decorate_url(url)
+        all_responses = []
+        next_token = None
+        session = await self.set_session()
+
+        call_kwargs = {k: v for k, v in self.kwargs.items() if k != "headers"}
+        headers = self.kwargs.get("headers", {}).copy() if "headers" in self.kwargs else {}
+
         try:
-            session = await self.set_session()
-            async with session.get(url, **self.kwargs) as r:
-                self._raise_not_found_for_status(r, url)
-                try:
-                    out: Dict[Any, Any] = await r.json()
-                except BaseException:
-                    logger.exception(VERBOSE_LVL, f"{url} cannot be parsed to json")
-                    out = {}
-            return out
+            while True:
+                if next_token:
+                    headers["x-jpmc-next-token"] = next_token
+                call_kwargs["headers"] = headers
+                async with session.get(url, **call_kwargs) as r:
+                    self._raise_not_found_for_status(r, url)
+                    try:
+                        out: Dict[Any, Any] = await r.json()
+                    except BaseException:
+                        logger.exception(VERBOSE_LVL, f"{url} cannot be parsed to json")
+                        out = {}
+                    all_responses.append(out)
+                    next_token = r.headers.get("x-jpmc-next-token")
+                    if not next_token:
+                        break
+            return _merge_responses(all_responses)
         except Exception as ex:
             logger.log(VERBOSE_LVL, f"Artificial error, {ex}")
             raise ex
@@ -175,11 +197,16 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             url = f'{self.client_kwargs["root_url"]}catalogs/' + url
         kw = self.kwargs.copy()
         kw.update(kwargs)
+        kw.pop("keep_protocol", None)
         session = await self.set_session()
         is_file = False
         size = None
         url = url if url[-1] != "/" else url[:-1]
         url_parts = url.split("/")
+
+        headers = kw.get("headers", {}).copy()
+        kw["headers"] = headers
+
         if url_parts[-2] == "distributions":
             async with session.head(
                 url + "/operationType/download", **self.kwargs
@@ -201,6 +228,27 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             async with session.get(url, **self.kwargs) as r:
                 self._raise_not_found_for_status(r, url)
                 out = await r.json()
+
+                next_token = self._extract_token_from_response(r)
+                if next_token:
+                    all_resources = out.get("resources", [])  # type: ignore
+
+                    while next_token:
+                        headers = kw.get("headers", {}).copy()
+                        headers["x-jpmc-next-token"] = next_token
+                        kw["headers"] = headers
+                        async with session.get(url, **kw) as r_inner:
+                            self._last_async_response = r_inner
+                            self._raise_not_found_for_status(r_inner, url)
+                            more_out = await r_inner.json()
+                            next_token = self._extract_token_from_response(r_inner)
+                            more_responses = more_out.get("resources", [])
+                            all_resources.extend(more_responses)
+
+                        if not next_token:
+                            break
+
+                    out["resources"] = all_resources  # type: ignore
 
         if not is_file:
             out = [
@@ -277,7 +325,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
         return res
 
     def ls(self, url: str, detail: bool = False, **kwargs: Any) -> Any:
-        """List resources.
+        """List resources with pagination support.
 
         Args:
             url: Url.
@@ -351,6 +399,34 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
         """
         path = self._decorate_url(path)
         return super().isfile(path)
+    
+    @staticmethod
+    def _merge_all_data(all_data: Optional[Dict[str, Any]], response_dict: Dict[str, Any]) -> Dict[str, Any]:
+        # Handles merging of paginated resources
+        if all_data is None:
+            return response_dict
+        elif isinstance(response_dict, dict):
+            resources = response_dict.get("resources", [])
+            if isinstance(all_data, dict) and "resources" in all_data:
+                all_data["resources"].extend(resources)
+            else:
+                all_data = {"resources": resources}
+        elif isinstance(response_dict, list):
+            flat_resources = []
+            for item in response_dict:
+                if isinstance(item, dict) and "resources" in item:
+                    flat_resources.extend(item["resources"])
+                else:
+                    flat_resources.append(item)
+            if isinstance(all_data, dict) and "resources" in all_data:
+                all_data["resources"].extend(flat_resources)
+            else:
+                all_data = {"resources": flat_resources}
+        elif isinstance(all_data, dict) and "resources" in all_data:
+            all_data["resources"].append(response_dict)
+        else:
+            all_data = {"resources": [response_dict]}
+        return all_data
 
     def cat(
         self,
@@ -359,7 +435,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
         end: Optional[int] = None,
         **kwargs: Any,
     ) -> Any:
-        """Fetch paths' contents.
+        """Fetch paths' contents with pagination support.
 
         Args:
             url: Url.
@@ -371,13 +447,74 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
 
         """
         url = self._decorate_url(url)
-        return super().cat(url, start=start, end=end, **kwargs)
+        all_data = None
+        kw = kwargs.copy()
+        headers = kw.get("headers", {}).copy()
+        kw["headers"] = headers
+
+        session = self.sync_session
+        info_result = self.info(url)
+        if isinstance(info_result, dict):
+            file_size = info_result.get("size", None)
+        elif isinstance(info_result, list) and info_result:
+            file_size = info_result[0].get("size", None) if isinstance(info_result[0], dict) else None
+        else:
+            file_size = None
+
+        range_start = start if start is not None else 0
+        range_end = end if end is not None else file_size if file_size is not None else 0
+        fusion_file = FusionFile(self, url, session=session, size=file_size, **kw)
+        while True:
+            out, resp_headers = fusion_file._fetch_range_with_headers(range_start, range_end)
+            response_dict = json.loads(out.decode("utf-8"))
+            all_data = self._merge_all_data(all_data, response_dict)
+            next_token = resp_headers.get("x-jpmc-next-token")
+            if not next_token:
+                break
+            headers["x-jpmc-next-token"] = next_token
+            kw["headers"] = headers
+
+        return json.dumps(all_data).encode("utf-8")
     
     async def _cat(self, url: str, start: Optional[int] = None, end: Optional[int] = None, **kwargs: Any) -> Any:
+        """Fetch paths' contents with pagination support (async).
+        Args:
+            url: Url.
+            start: Start.
+            end: End.
+            **kwargs: Kwargs.
+        Returns:
+        """
         await self._async_startup()
         url = self._decorate_url(url)
-        out = await super()._cat(url, start=start, end=end, **kwargs)
-        return out
+        all_data = None
+        kw = kwargs.copy()
+        headers = kw.get("headers", {}).copy()
+        kw["headers"] = headers
+
+        session = await self.set_session()
+        info_result = await self._info(url)
+        if isinstance(info_result, dict):
+            file_size = info_result.get("size", None)
+        elif isinstance(info_result, list) and info_result:
+            file_size = info_result[0].get("size", None) if isinstance(info_result[0], dict) else None
+        else:
+            file_size = None
+
+        range_start = start if start is not None else 0
+        range_end = end if end is not None else file_size if file_size is not None else 0
+        fusion_file = FusionFile(self, url, session=session, size=file_size, **kw)
+        while True:
+            out, resp_headers = await fusion_file._async_fetch_range_with_headers(range_start, range_end)
+            response_dict = json.loads(out.decode("utf-8"))
+            all_data = self._merge_all_data(all_data, response_dict)
+            next_token = resp_headers.get("x-jpmc-next-token")
+            if not next_token:
+                break
+            headers["x-jpmc-next-token"] = next_token
+            kw["headers"] = headers
+
+        return json.dumps(all_data).encode("utf-8")
 
     async def _stream_file(self, url: str, chunk_size: int = 100) -> AsyncGenerator[bytes, None]:
         """Return an async stream to file at the given url.
@@ -474,7 +611,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             n_threads (int, optional): _description_. Defaults to 10.
 
         Returns:
-            list[tuple[bool, str, Optional[str]]]: Return array.
+            List[Tuple[bool, str, Optional[str]]]: Return array.
         """
 
         coros = []
@@ -511,7 +648,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
             block_size (int, optional): The chunk size to download data. Defaults to DEFAULT_CHUNK_SIZE
 
         Returns:
-            tuple: A tuple
+            Tuple[bool, str, Optional[str]]: A tuple
 
         """
 
@@ -1182,3 +1319,23 @@ class FusionFile(HTTPFile):  # type: ignore
             return out
 
     _fetch_range = sync_wrapper(async_fetch_range)
+
+
+    async def _async_fetch_range_with_headers(self, start: int, end: int) -> Tuple[bytes, Dict[str, Any]]:
+        kwargs = self.kwargs.copy()
+        headers = kwargs.pop("headers", {}).copy()
+        headers["Range"] = f"bytes={start}-{end - 1}"
+        r = await self.session.get(self.fs.encode_url(self.url), headers=headers, **kwargs)
+        async with r:
+            r.raise_for_status()
+            out = await r.read()
+            return out, r.headers
+
+    def _fetch_range_with_headers(self, start: int, end: int) -> Tuple[bytes, Dict[str, Any]]:
+        kwargs = self.kwargs.copy()
+        headers = kwargs.pop("headers", {}).copy()
+        headers["Range"] = f"bytes={start}-{end - 1}"
+        with self.session.get(self.fs.encode_url(self.url), headers=headers, **kwargs) as r:
+            r.raise_for_status()
+            out = r.content
+            return out, r.headers

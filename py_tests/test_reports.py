@@ -111,10 +111,10 @@ def test_report_from_object_list() -> None:
         "description": "Monthly liquidity assessment",
         "frequency": "Monthly",
         "category": "Risk",
-        "subCategory": "Liquidity",
-        "dataNodeId": {"name": "ABC123", "dataNodeType": "Application (SEAL)"},
+        "sub_category": "Liquidity",
+        "data_node_id": {"name": "ABC123", "dataNodeType": "Application (SEAL)"},
         "domain": {"name": "Finance"},
-        "regulatoryRelated": True,
+        "regulatory_related": True,
     }]
     reports = Report.from_object(obj)
     assert len(reports) == 1

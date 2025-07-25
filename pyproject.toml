@@ -51,6 +51,7 @@ pytest-mock = "3.6.1"
 asynctest = "^0.13.0"
 typing-extensions = "^3.10"
 mock = "^5.1.0"
+pytest-asyncio = "^0.21.0"
 
 [tool.ruff]
 line-length = 120
@@ -109,7 +110,7 @@ html.skip_covered = false
 parallel = true
 
 [tool.coverage.report]
-fail_under = 71
+fail_under = 73
 omit = [
     "py_src/fusion/_legacy/authentication.py",
     "py_src/fusion/_legacy/__init__.py"

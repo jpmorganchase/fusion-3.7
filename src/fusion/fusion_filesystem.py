@@ -179,7 +179,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
                     try:
                         out: Dict[Any, Any] = await r.json()
                     except BaseException:
-                        logger.exception(VERBOSE_LVL, f"{url} cannot be parsed to json")
+                        logger.log(VERBOSE_LVL, f"{url} cannot be parsed to json", exc_info=True)
                         out = {}
                     all_responses.append(out)
                     next_token = r.headers.get("x-jpmc-next-token")

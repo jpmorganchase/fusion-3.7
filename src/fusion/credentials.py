@@ -74,6 +74,20 @@ def fusion_url_to_auth_url(url: str) -> Optional[tuple]:
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
             raise ValueError("Invalid URL")
+            
+        if parsed.scheme not in ["http", "https"]:
+            raise CredentialError(f"URL scheme must be http or https, got: {parsed.scheme}, status code: 400")
+        
+        hostname = parsed.netloc.split(":")[0]
+        if (hostname == "localhost" or 
+            hostname == "127.0.0.1" or 
+            hostname.startswith("192.168.") or 
+            hostname.startswith("10.") or 
+            hostname.startswith("172.16.") or 
+            hostname.startswith("fd") or
+            hostname.endswith(".local")):
+            raise CredentialError(f"Access to internal networks not allowed: {hostname}, status code: 403")
+            
     except ValueError as err:
         raise CredentialError(f"Could not parse URL: {url}, status code: 400") from err
         

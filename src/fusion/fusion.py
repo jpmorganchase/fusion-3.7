@@ -10,13 +10,13 @@ import warnings
 from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union 
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
-from typing_extensions import TypedDict  
+from typing_extensions import TypedDict
 
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 

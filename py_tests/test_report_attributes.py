@@ -1,12 +1,11 @@
 """Test cases for report_attributes module."""
 
 import json
-from typing import Any, Generator
+from typing import Any
 
 import pandas as pd
 import pytest
 import requests
-import requests_mock
 from requests_mock import Mocker
 
 from fusion import Fusion

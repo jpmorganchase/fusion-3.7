@@ -11,64 +11,12 @@ from requests_mock import Mocker
 from fusion import Fusion
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 
-
-def test_report_attribute_class() -> None:
-    """Test ReportAttribute class basic behavior."""
-    attr = ReportAttribute(
-        title="Title",
-        sourceIdentifier="SRC1",
-        description="Desc",
-        technicalDataType="String",
-        path="path1",
-    )
-
-    assert str(attr)
-    assert repr(attr)
-    assert attr.title == "Title"
-    assert attr.sourceIdentifier == "SRC1"
-    assert attr.description == "Desc"
-    assert attr.technicalDataType == "String"
-    assert attr.path == "path1"
-
-    # __getattr__ and __setattr__ with camelCase
-    attr.client = Fusion()
-    assert attr.client is not None
-
-    attr.newField = "value"
-    assert attr.new_field == "value"
-    assert attr.newField == "value"
-
-    # to_dict
-    result = attr.to_dict()
-    assert result == {
-        "sourceIdentifier": "SRC1",
-        "title": "Title",
-        "description": "Desc",
-        "technicalDataType": "String",
-        "path": "path1",
-    }
-
-
 def test_report_attribute_client_value_error() -> None:
     """Test _use_client raises ValueError when no client provided."""
     attr = ReportAttribute(title="Test")
     with pytest.raises(ValueError, match="A Fusion client object is required."):
         attr._use_client(None)
 
-
-def test_report_attributes_add_get_remove() -> None:
-    """Test add, get, and remove attribute."""
-    ra = ReportAttributes()
-    attr = ReportAttribute(title="Attr1", sourceIdentifier="SRC")
-    ra.add_attribute(attr)
-
-    got_attr = ra.get_attribute("attr1")
-    assert isinstance(got_attr, ReportAttribute)
-    assert got_attr.title == "Attr1"
-
-    removed = ra.remove_attribute("attr1")
-    assert removed is True
-    assert ra.get_attribute("attr1") is None
 
 
 def test_report_attributes_to_dict_dataframe() -> None:

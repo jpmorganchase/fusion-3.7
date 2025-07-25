@@ -18,6 +18,7 @@ from fusion.authentication import FusionOAuthAdapter
 from fusion.credentials import FusionCredentials
 from fusion.utils import (
     _filename_to_distribution,
+    _merge_responses,
     _normalise_dt_param,
     convert_date_format,
     cpu_count,
@@ -25,6 +26,7 @@ from fusion.utils import (
     distribution_to_url,
     file_name_to_url,
     get_session,
+    handle_paginated_request,
     is_dataset_raw,
     make_bool,
     make_list,
@@ -599,4 +601,98 @@ def test_file_name_to_url(
     result = file_name_to_url(file_name, dataset, catalog, is_download)
     expected_url = f"mock/{catalog}/{dataset}/{expected_series}.{expected_ext}?dl={is_download}"
     assert result == expected_url
+
+class DummyResponse:
+    def __init__(self, json_data: object, headers: dict = None) -> None:
+        self._json_data = json_data
+        self.headers = headers or {}
+        self.status_code = 200
+    def json(self) -> object:
+        return self._json_data
+    def raise_for_status(self) -> None:
+        pass
+
+class DummySession:
+    def __init__(self, responses: list) -> None:
+        self.responses = responses
+        self.call_count = 0
+    def get(self, url: str, headers: dict = None) -> object:
+        resp = self.responses[self.call_count]
+        self.call_count += 1
+        return resp
+
+def test_handle_paginated_request_merges_all_pages() -> None:
+    page1 = DummyResponse({'resources': [1, 2]}, headers={'x-jpmc-next-token': 'token2'})
+    page2 = DummyResponse({'resources': [3, 4]}, headers={})
+    session = DummySession([page1, page2])
+    url = 'http://fake-url'
+    result = handle_paginated_request(session, url)
+    assert 'resources' in result
+    assert result['resources'] == [1, 2, 3, 4]
+
+def test_handle_paginated_request_no_pagination() -> None:
+    page1 = DummyResponse({'resources': [1, 2]}, headers={})
+    session = DummySession([page1])
+    url = 'http://fake-url'
+    result = handle_paginated_request(session, url)
+    assert 'resources' in result
+    assert result['resources'] == [1, 2]
+
+def test_handle_paginated_request_with_headers() -> None:
+    page1 = DummyResponse({'resources': [1]}, headers={'x-jpmc-next-token': 'token2'})
+    page2 = DummyResponse({'resources': [2]}, headers={})
+    session = DummySession([page1, page2])
+    url = 'http://fake-url'
+    custom_headers = {'Authorization': 'Bearer token'}
+    result = handle_paginated_request(session, url, headers=custom_headers)
+    assert result['resources'] == [1, 2]
+
+def test_handle_paginated_request_empty() -> None:
+    page1 = DummyResponse({}, headers={})
+    session = DummySession([page1])
+    url = 'http://fake-url'
+    result = handle_paginated_request(session, url)
+    assert result == {}
+
+def test_handle_paginated_request_merges_non_list_fields() -> None:
+    page1 = DummyResponse({'resources': [1], 'meta': 'foo'}, headers={'x-jpmc-next-token': 'token2'})
+    page2 = DummyResponse({'resources': [2], 'meta': 'bar'}, headers={})
+    session = DummySession([page1, page2])
+    url = 'http://fake-url'
+    result = handle_paginated_request(session, url)
+    assert result['resources'] == [1, 2]
+    assert result['meta'] == 'foo'
+
+def test_merge_responses_merges_lists() -> None:
+    responses = [
+        {'resources': [1, 2], 'meta': 'foo'},
+        {'resources': [3, 4], 'meta': 'bar'},
+        {'resources': [5], 'meta': 'baz'}
+    ]
+    merged = _merge_responses(responses)
+    assert merged['resources'] == [1, 2, 3, 4, 5]
+    assert merged['meta'] == 'foo'
+
+def test_merge_responses_empty() -> None:
+    assert _merge_responses([]) == {}
+
+def test_merge_responses_no_lists() -> None:
+    responses = [
+        {'meta': 'foo', 'count': 1},
+        {'meta': 'bar', 'count': 2}
+    ]
+    merged = _merge_responses(responses)
+    assert merged['meta'] == 'foo'
+    assert merged['count'] == 1
+
+def test_merge_responses_mixed_types() -> None:
+    responses = [
+        {'resources': [1], 'meta': 'foo', 'other': 123},
+        {'resources': [], 'meta': 'bar', 'other': 456},
+        {'resources': [2, 3], 'meta': 'baz', 'other': 789}
+    ]
+    merged = _merge_responses(responses)
+    assert merged['resources'] == [1, 2, 3]
+    assert merged['meta'] == 'foo'
+    assert merged['other'] == 123
 

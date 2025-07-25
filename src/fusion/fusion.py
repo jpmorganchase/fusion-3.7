@@ -10,13 +10,13 @@ import warnings
 from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union  # Make sure this is imported
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union 
 
 import pandas as pd
 from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
-from typing_extensions import TypedDict  # Needed in 3.7 since TypedDict wasn't in stdlib yet
+from typing_extensions import TypedDict  
 
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 

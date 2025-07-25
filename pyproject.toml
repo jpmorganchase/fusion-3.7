@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyfusion37"
-version = "0.0.3"
+version = "0.0.4-dev0"
 description = "JPMC Fusion Developer Tools"
 homepage = "https://github.com/jpmorganchase/fusion-3.7"
 readme = "README.md"
@@ -110,7 +110,7 @@ html.skip_covered = false
 parallel = true
 
 [tool.coverage.report]
-fail_under = 5
+fail_under = 70
 omit = [
     "py_src/fusion/_legacy/authentication.py",
     "py_src/fusion/_legacy/__init__.py"

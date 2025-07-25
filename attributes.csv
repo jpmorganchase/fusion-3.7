@@ -1,2 +1,0 @@
-applicationId,attributeType,availableFrom,dataType,dataset,deprecatedFrom,description,identifier,index,isCriticalDataElement,isDatasetKey,isExternallyVisible,isInternalDatasetKey,isMetric,isPropagationEligible,multiplier,publisher,source,sourceFieldId,term,title,unit
-,,,String,,,Example Attribute,example_attribute,0,,False,True,,,,1.0,,,example_attribute,bizterm1,Example Attribute,

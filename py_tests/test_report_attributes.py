@@ -11,6 +11,7 @@ from requests_mock import Mocker
 from fusion import Fusion
 from fusion.report_attributes import ReportAttribute, ReportAttributes
 
+
 def test_report_attribute_client_value_error() -> None:
     """Test _use_client raises ValueError when no client provided."""
     attr = ReportAttribute(title="Test")

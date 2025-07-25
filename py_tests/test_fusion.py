@@ -5,7 +5,7 @@ import re
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -19,6 +19,7 @@ from fusion.attributes import Attribute, Types
 from fusion.credentials import FusionCredentials
 from fusion.exceptions import CredentialError, FileFormatError
 from fusion.fusion import logger
+from fusion.report import Report
 from fusion.utils import _normalise_dt_param, distribution_to_url
 
 
@@ -1863,7 +1864,7 @@ def test_fusion_report(fusion_obj: Fusion) -> None:
     assert report.is_bcbs239_program is True
     assert report.region == "EMEA"
     assert report.data_node_id["name"] == "ComplianceTable"
-    
+
 def test_fusion_input_dataflow(fusion_obj: Fusion) -> None:
     """Test Fusion Input Dataflow class from client"""
     test_input_dataflow = fusion_obj.input_dataflow(

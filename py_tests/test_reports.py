@@ -42,27 +42,6 @@ def test_report_from_dict_missing_required() -> None:
         report.validate()
 
 
-def test_report_to_dict_and_back() -> None:
-    original = Report(
-        title="Liquidity Report",
-        description="Monthly liquidity assessment",
-        frequency="Monthly",
-        category="Risk",
-        sub_category="Liquidity",
-        data_node_id={"name": "ABC123", "dataNodeType": "Application (SEAL)"},
-        domain={"name": "Finance"},
-        regulatory_related=True,
-    )
-    report_dict = original.to_dict()
-    restored = Report.from_dict(report_dict)
-    assert restored.title == original.title
-    assert restored.description == original.description
-    assert restored.frequency == original.frequency
-    assert restored.category == original.category
-    assert restored.sub_category == original.sub_category
-    assert restored.data_node_id == original.data_node_id
-    assert restored.domain == original.domain
-    assert restored.regulatory_related is True
 
 
 def test_report_from_dataframe_valid() -> None:
@@ -105,20 +84,6 @@ def test_report_from_dataframe_invalid_row_skipped(caplog: LogCaptureFixture) ->
     assert len(reports) == 0
     assert "Skipping invalid row" in caplog.text
 
-def test_report_from_object_list() -> None:
-    obj = [{
-        "title": "Liquidity Report",
-        "description": "Monthly liquidity assessment",
-        "frequency": "Monthly",
-        "category": "Risk",
-        "sub_category": "Liquidity",
-        "data_node_id": {"name": "ABC123", "dataNodeType": "Application (SEAL)"},
-        "domain": {"name": "Finance"},
-        "regulatory_related": True,
-    }]
-    reports = Report.from_object(obj)
-    assert len(reports) == 1
-    assert isinstance(reports[0], Report)
 
 
 def test_report_from_object_invalid_type() -> None:

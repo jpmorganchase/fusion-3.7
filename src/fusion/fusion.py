@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
+from pandas.io.json import json_normalize
 from tabulate import tabulate
 from tqdm import tqdm
 from typing_extensions import TypedDict

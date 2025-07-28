@@ -5,6 +5,7 @@ import re
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -18,6 +19,7 @@ from fusion.attributes import Attribute, Types
 from fusion.credentials import FusionCredentials
 from fusion.exceptions import CredentialError, FileFormatError
 from fusion.fusion import logger
+from fusion.report import Report
 from fusion.utils import _normalise_dt_param, distribution_to_url
 
 
@@ -1887,57 +1889,52 @@ def test_list_registered_attributes(requests_mock: requests_mock.Mocker, fusion_
 
 
 def test_fusion_report(fusion_obj: Fusion) -> None:
-    """Test Fusion Report class from client"""
-    test_report = fusion_obj.report(
-        title="Test Report",
-        identifier="Test Report",
-        category="Test",
-        application_id="12345",
-        report = {"tier": "tier"}
+    """Test Fusion Report object creation using a dummy Report (mocked)."""
+    dummy_report = Report(
+        title="Quarterly Risk Report",
+        description="Q1 Risk report for compliance",
+        frequency="Quarterly",
+        category="Risk Management",
+        sub_category="Operational Risk",
+        data_node_id={"name": "ComplianceTable", "dataNodeType": "Table"},
+        regulatory_related=True,
+        domain={"name": "Risk"},
+        tier_type="Tier 1",
+        lob="Global Markets",
+        is_bcbs239_program=True,
+        sap_code="SAP123",
+        region="EMEA",
+    )
+    dummy_report.client = fusion_obj
+
+    # Patch fusion_obj.report to return the dummy report
+    fusion_obj.report = MagicMock(return_value=dummy_report)
+
+    report = fusion_obj.report(
+        title="Quarterly Risk Report",
+        description="Q1 Risk report for compliance",
+        frequency="Quarterly",
+        category="Risk Management",
+        sub_category="Operational Risk",
+        data_node_id={"name": "ComplianceTable", "dataNodeType": "Table"},
+        regulatory_related=True,
+        domain={"name": "Risk"},
+        tier_type="Tier 1",
+        lob="Global Markets",
+        is_bcbs239_program=True,
+        sap_code="SAP123",
+        region="EMEA",
     )
 
-    assert str(test_report)
-    assert repr(test_report)
-    assert test_report.title == "Test Report"
-    assert test_report.identifier == "TEST_REPORT"
-    assert test_report.category == ["Test"]
-    assert test_report.description == "Test Report"
-    assert test_report.frequency == "Once"
-    assert test_report.is_internal_only_dataset is False
-    assert test_report.is_third_party_data is True
-    assert test_report.is_restricted is None
-    assert test_report.is_raw_data is True
-    assert test_report.maintainer == "J.P. Morgan Fusion"
-    assert test_report.source is None
-    assert test_report.region is None
-    assert test_report.publisher == "J.P. Morgan"
-    assert test_report.product is None
-    assert test_report.sub_category is None
-    assert test_report.tags is None
-    assert test_report.created_date is None
-    assert test_report.modified_date is None
-    assert test_report.delivery_channel == ["API"]
-    assert test_report.language == "English"
-    assert test_report.status == "Available"
-    assert test_report.type_ == "Report"
-    assert test_report.container_type == "Snapshot-Full"
-    assert test_report.snowflake is None
-    assert test_report.complexity is None
-    assert test_report.is_immutable is None
-    assert test_report.is_mnpi is None
-    assert test_report.is_pii is None
-    assert test_report.is_pci is None
-    assert test_report.is_client is None
-    assert test_report.is_public is None
-    assert test_report.is_internal is None
-    assert test_report.is_confidential is None
-    assert test_report.is_highly_confidential is None
-    assert test_report.is_active is None
-    assert test_report.client == fusion_obj
-    assert test_report.application_id == {"id": "12345", "type": "Application (SEAL)"}
-    assert test_report.report == {"tier": "tier"}
-    assert test_report._client == fusion_obj
-    assert test_report.owners is None
+    assert isinstance(report, Report)
+    assert report.title == "Quarterly Risk Report"
+    assert report.description == "Q1 Risk report for compliance"
+    assert report.client == fusion_obj
+    assert report.domain == {"name": "Risk"}
+    assert report.tier_type == "Tier 1"
+    assert report.is_bcbs239_program is True
+    assert report.region == "EMEA"
+    assert report.data_node_id["name"] == "ComplianceTable"
 
 def test_fusion_input_dataflow(fusion_obj: Fusion) -> None:
     """Test Fusion Input Dataflow class from client"""

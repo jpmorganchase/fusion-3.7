@@ -1941,7 +1941,7 @@ def test_fusion_input_dataflow(fusion_obj: Fusion) -> None:
     test_input_dataflow = fusion_obj.input_dataflow(
         title="Test Input Dataflow",
         identifier="Test Input Dataflow",
-               category="Test",
+        category="Test",
         application_id="12345",
         producer_application_id={"id": "12345", "type": "Application (SEAL)"},
         consumer_application_id={"id": "12345", "type": "Application (SEAL)"},

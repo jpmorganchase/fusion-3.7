@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyfusion37"
-version = "0.0.4"
+version = "0.0.5-dev0"
 description = "JPMC Fusion Developer Tools"
 homepage = "https://github.com/jpmorganchase/fusion-3.7"
 readme = "README.md"
@@ -52,6 +52,7 @@ pytest-mock = "3.6.1"
 asynctest = "^0.13.0"
 typing-extensions = "^3.10"
 mock = "^5.1.0"
+pytest-asyncio = "^0.21.0"
 
 [tool.ruff]
 line-length = 120
@@ -110,7 +111,7 @@ html.skip_covered = false
 parallel = true
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 71
 omit = [
     "py_src/fusion/_legacy/authentication.py",
     "py_src/fusion/_legacy/__init__.py"

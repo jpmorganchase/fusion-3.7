@@ -37,6 +37,7 @@ from .utils import (
     file_name_to_url,
     get_default_fs,
     get_session,
+    handle_paginated_request,
     is_dataset_raw,
     normalise_dt_param_str,
     path_to_url,
@@ -62,7 +63,8 @@ class Fusion:
 
     @staticmethod
     def _call_for_dataframe(url: str, session: requests.Session) -> pd.DataFrame:
-        """Private function that calls an API endpoint and returns the data as a pandas dataframe.
+        """Private function that calls an API endpoint and returns the data as a pandas dataframe, 
+        with pagination support.
 
         Args:
             url (str): URL for an API endpoint with valid parameters.
@@ -71,9 +73,9 @@ class Fusion:
         Returns:
             pandas.DataFrame: A dataframe containing the requested data.
         """
-        response = session.get(url)
-        response.raise_for_status()
-        table = response.json()["resources"]
+        response_data = handle_paginated_request(session, url)
+        table = response_data.get("resources", [])
+
         ret_df = pd.DataFrame(table).reset_index(drop=True)
         return ret_df
 
@@ -214,8 +216,7 @@ class Fusion:
             )
     
     def _get_new_root_url(self) -> str:
-        """
-        Returns a modified version of the root URL to support the new API format.
+        """Returns a modified version of the root URL to support the new API format.
 
         This method temporarily strips trailing segments such as "/api/v1/" or "/v1/"
         from the original `root_url` to align with an updated API base path format.
@@ -246,8 +247,7 @@ class Fusion:
         technicalDataType: Optional[str] = None,
         path: Optional[str] = None,
     ) -> ReportAttribute:
-        """
-        Instantiate a ReportAttribute object with this client for metadata creation.
+        """Instantiate a ReportAttribute object with this client for metadata creation.
 
         Args:
             title (str): The display title of the attribute (required).
@@ -284,8 +284,7 @@ class Fusion:
         self,
         attributes: Optional[list[ReportAttribute]] = None,
     ) -> ReportAttributes:
-        """
-        Instantiate a ReportAttributes collection with this client, allowing batch creation or manipulation.
+        """Instantiate a ReportAttributes collection with this client, allowing batch creation or manipulation.
 
         Args:
             attributes (list[ReportAttribute] , optional): A list of ReportAttribute objects to include.
@@ -307,6 +306,24 @@ class Fusion:
 
 
     def reports(self) -> ReportsWrapper:
+        """Instantiate a ReportsWrapper collection with this client, providing access to
+        report-related operations such as creation, retrieval, and bulk manipulation.
+        Returns:
+            ReportsWrapper: A ReportsWrapper collection object with the client context attached.
+        Example:
+            >>> fusion = Fusion()
+            >>> reports = fusion.reports()
+            >>> new_report = reports.create(
+            ...     title="Monthly Risk Report",
+            ...     description="Summary of monthly risk metrics",
+            ...     frequency="Monthly",
+            ...     category="Risk",
+            ...     sub_category="Credit Risk",
+            ...     data_node_id={"id": "node123"},
+            ...     regulatory_related=True,
+            ...     domain={"id": "domain123"}
+            ... )
+        """
         return ReportsWrapper(client=self)
 
     class AttributeTermMapping(TypedDict):
@@ -495,28 +512,26 @@ class Fusion:
         # try for exact match
         if contains and isinstance(contains, str):
             url = f"{self.root_url}catalogs/{catalog}/datasets/{contains}"
-            resp = self.session.get(url)
-            status_success = 200
-            if resp.status_code == status_success:
-                resp_json = resp.json()
-                if not display_all_columns:
-                    cols = [
-                        "identifier",
-                        "title",
-                        "containerType",
-                        "region",
-                        "category",
-                        "coverageStartDate",
-                        "coverageEndDate",
-                        "description",
-                        "status",
-                        "type",
-                    ]
-                    data = {col: resp_json.get(col, None) for col in cols}
-                    return pd.DataFrame([data])
-                else:
-                    return json_normalize(resp_json)
+            resp_json = handle_paginated_request(self.session, url)
 
+            if not display_all_columns:
+                cols = [
+                    "identifier",
+                    "title",
+                    "containerType",
+                    "region",
+                    "category",
+                    "coverageStartDate",
+                    "coverageEndDate",
+                    "description",
+                    "status",
+                    "type",
+                ]
+                data = {col: resp_json.get(col, None) for col in cols}
+                return pd.DataFrame([data])
+            else:
+                return pd.json_normalize(resp_json)
+            
         url = f"{self.root_url}catalogs/{catalog}/datasets"
         ds_df = Fusion._call_for_dataframe(url, self.session)
 
@@ -933,7 +948,14 @@ class Fusion:
         valid_date_range = re.compile(r"^(\d{4}\d{2}\d{2})$|^((\d{4}\d{2}\d{2})?([:])(\d{4}\d{2}\d{2})?)$")
 
         # Check that format is valid and if none, check if there is only one format available
-        available_formats = list(self.list_datasetmembers_distributions(dataset, catalog)["format"].unique())
+        distributions_df = self.list_datasetmembers_distributions(dataset, catalog)
+
+        if distributions_df.empty:
+            raise FileFormatError(
+                f"No distributions found for dataset '{dataset}' in catalog '{catalog}'."
+            )
+
+        available_formats = list(distributions_df["format"].unique())
 
         if dataset_format and dataset_format not in available_formats:
             raise FileFormatError(
@@ -1283,14 +1305,9 @@ class Fusion:
         """
         catalog = self._use_catalog(catalog)
 
-        url_dataset = f"{self.root_url}catalogs/{catalog}/datasets/{dataset_id}"
-        resp_dataset = self.session.get(url_dataset)
-        resp_dataset.raise_for_status()
-
         url = f"{self.root_url}catalogs/{catalog}/datasets/{dataset_id}/lineage"
-        resp = self.session.get(url)
-        data = resp.json()
-        relations_data = data["relations"]
+        data = handle_paginated_request(self.session, url)
+        relations_data = data.get("relations", [])
 
         restricted_datasets = [
             dataset_metadata["identifier"]
@@ -1720,8 +1737,7 @@ class Fusion:
         domain: Dict[str, str | bool]  = None,
         **kwargs: Any,
     ) -> Report:
-        """
-        Instantiate a Report object with the current Fusion client attached.
+        """Instantiate a Report object with the current Fusion client attached.
 
         Args:
             description (str): Description of the report.
@@ -2135,15 +2151,21 @@ class Fusion:
         catalog = self._use_catalog(catalog)
 
         url = f"{self.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
-        resp = self.session.get(url)
-        dists = resp.json()["datasets"][0]["distributions"]
+        data = handle_paginated_request(self.session, url)
 
-        data = []
+        datasets = data.get("datasets", [])
+        if not datasets:
+            return pd.DataFrame()
+
+        dists = datasets[0].get("distributions", [])
+        rows = []
+        MEMBER_FORMAT_INDEX = 6  # Index for member_format in values list
         for dist in dists:
             values = dist.get("values")
-            member_id = values[5]
-            member_format = values[6]
-            data.append((member_id, member_format))
+            if values and len(values) > MEMBER_FORMAT_INDEX:
+                member_id = values[5]
+                member_format = values[MEMBER_FORMAT_INDEX]
+                rows.append((member_id, member_format))
 
-        members_df = pd.DataFrame(data, columns=["identifier", "format"])
+        members_df = pd.DataFrame(rows, columns=["identifier", "format"])
         return members_df

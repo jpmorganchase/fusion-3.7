@@ -5,7 +5,7 @@ import re
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -37,38 +37,48 @@ def mock_response_data() -> Dict[str, Any]:
     return {"resources": [{"id": 1, "name": "Resource 1"}, {"id": 2, "name": "Resource 2"}]}
 
 
-def test_call_for_dataframe(mock_response_data: Dict[str, Any]) -> None:
-    """Test `_call_for_dataframe` static method."""
+def test_call_for_dataframe(requests_mock: Any, mock_response_data: Dict[str, Any]) -> None:
+    """Test `_call_for_dataframe` static method with requests_mock."""
     url = "https://api.example.com/data"
+    requests_mock.get(url, json=mock_response_data)
 
-    with patch("requests.Session.get") as mock_get:
-        mock_get.return_value.json.return_value = mock_response_data
-        mock_get.return_value.raise_for_status = lambda: None
+    session = requests.Session()
+    df = Fusion._call_for_dataframe(url, session)
 
-        session = requests.Session()
-        df = Fusion._call_for_dataframe(url, session)
-
-        assert isinstance(df, pd.DataFrame)
-        assert df.shape == (2, 2)
-        assert list(df.columns) == ["id", "name"]
-        assert df.iloc[0]["id"] == 1
-        assert df.iloc[0]["name"] == "Resource 1"
+    assert isinstance(df, pd.DataFrame)
+    assert df.shape == (2, 2)
+    assert list(df.columns) == ["id", "name"]
+    assert df.iloc[0]["id"] == 1
+    assert df.iloc[0]["name"] == "Resource 1"
 
 
-def test_call_for_bytes_object() -> None:
-    """Test `_call_for_bytes_object` static method."""
+def test_call_for_dataframe_error(requests_mock: Any) -> None:
+    """Test `_call_for_dataframe` static method error handling."""
+    url = "https://api.example.com/data"
+    requests_mock.get(url, status_code=500)
+    session = requests.Session()
+    with pytest.raises(requests.exceptions.HTTPError):
+        Fusion._call_for_dataframe(url, session)
+
+
+def test_call_for_bytes_object(requests_mock: Any) -> None:
+    """Test `_call_for_bytes_object` static method with requests_mock."""
     url = "https://api.example.com/file"
     mock_content = b"Mock file content"
+    requests_mock.get(url, content=mock_content)
+    session = requests.Session()
+    byte_obj = Fusion._call_for_bytes_object(url, session)
+    assert isinstance(byte_obj, BytesIO)
+    assert byte_obj.read() == mock_content
 
-    with patch("requests.Session.get") as mock_get:
-        mock_get.return_value.content = mock_content
-        mock_get.return_value.raise_for_status = lambda: None
 
-        session = requests.Session()
-        byte_obj = Fusion._call_for_bytes_object(url, session)
-
-        assert isinstance(byte_obj, BytesIO)
-        assert byte_obj.read() == mock_content
+def test_call_for_bytes_object_fail(requests_mock: Any) -> None:
+    """Test `_call_for_bytes_object` static method error handling."""
+    url = "https://api.example.com/file"
+    requests_mock.get(url, status_code=500)
+    session = requests.Session()
+    with pytest.raises(requests.exceptions.HTTPError):
+        Fusion._call_for_bytes_object(url, session)
 
 
 def test_fusion_init_with_credentials(example_creds_dict_token: Dict[str, str]) -> None:
@@ -227,6 +237,27 @@ def test_list_catalogs_success(requests_mock: requests_mock.Mocker, fusion_obj: 
     expected_df = pd.DataFrame(expected_data["resources"])
     pd.testing.assert_frame_equal(test_df, expected_df)
 
+def test_list_catalogs_pagination(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    # Mock paginated responses from the API endpoint
+    url = "https://fusion.jpmorgan.com/api/v1/catalogs/"
+    page1 = {"resources": [{"id": 1, "name": "Catalog 1"}]}
+    page2 = {"resources": [{"id": 2, "name": "Catalog 2"}]}
+    # First page returns a next token
+    requests_mock.get(url, json=page1, headers={"x-jpmc-next-token": "token2"})
+    # Second page is requested with the next token
+    requests_mock.get(
+        url,
+        additional_matcher=lambda request: request.headers.get("x-jpmc-next-token") == "token2",
+        json=page2
+    )
+
+    # Call the list_catalogs method
+    test_df = fusion_obj.list_catalogs()
+
+    # Check if the dataframe is created correctly and includes all paginated results
+    expected_df = pd.DataFrame([{"id": 1, "name": "Catalog 1"}, {"id": 2, "name": "Catalog 2"}])
+    pd.testing.assert_frame_equal(test_df, expected_df)
+
 
 def test_list_catalogs_fail(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     # Mock the response from the API endpoint with an error status code
@@ -316,6 +347,46 @@ def test_list_datasets_success(requests_mock: requests_mock.Mocker, fusion_obj: 
     expected_df = pd.DataFrame(expected_data["resources"])
     pd.testing.assert_frame_equal(test_df, expected_df, check_like=True)
 
+def test_list_datasets_pagination(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    """Test that list_datasets handles paginated API responses."""
+    url = f"{fusion_obj.root_url}catalogs/common/datasets"
+    # Simulate two pages of results
+    page1 = {
+        "resources": [
+            {"identifier": "ONE", "name": "Dataset 1", "category": ["FX"], "region": ["US"]}
+        ],
+        "next": "token2"
+    }
+    page2 = {
+        "resources": [
+            {"identifier": "TWO", "name": "Dataset 2", "category": ["FX"], "region": ["EU"]}
+        ],
+        "next": None
+    }
+
+    # First page returns a next token
+    requests_mock.get(url, json=page1, headers={"x-jpmc-next-token": "token2"})
+    # Second page is requested with the next token
+    requests_mock.get(
+        url,
+        additional_matcher=lambda request: request.headers.get("x-jpmc-next-token") == "token2",
+        json=page2
+    )
+
+    # Call the list_datasets method
+    test_df = fusion_obj.list_datasets()
+
+    # Check if the dataframe is created correctly and includes all paginated results
+    expected_df = pd.DataFrame([
+        {"identifier": "ONE", "name": "Dataset 1", "category": "FX", "region": "US"},
+        {"identifier": "TWO", "name": "Dataset 2", "category": "FX", "region": "EU"}
+    ])
+    # Only check relevant columns
+    pd.testing.assert_frame_equal(
+        test_df[["identifier", "category", "region"]].reset_index(drop=True),
+        expected_df[["identifier", "category", "region"]].reset_index(drop=True),
+        check_like=True
+    )
 
 def test_list_datasets_type_filter(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
     new_catalog = "catalog_id"
@@ -2024,6 +2095,10 @@ def test_fusion_init_logging_disabled(credentials: FusionCredentials) -> None:
     assert all(not isinstance(handler, logging.FileHandler) for handler in logger.handlers)
 
     logger.handlers.clear()
+
+
+
+
 
 
 

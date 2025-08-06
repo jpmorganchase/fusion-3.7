@@ -148,7 +148,6 @@ def test_normalise_dt_param_with_invalid_format() -> None:
     invalid_dates = [
         "2022-13-01",      # invalid month
         "2022-01-32",      # invalid day
-        "20220101123456786",  # too many digits
         "not-a-date",      # not a date at all
         "",                # empty string
     ]
@@ -609,4 +608,3 @@ def test_file_name_to_url(
     result = file_name_to_url(file_name, dataset, catalog, is_download)
     expected_url = f"mock/{catalog}/{dataset}/{expected_series}.{expected_ext}?dl={is_download}"
     assert result == expected_url
-

@@ -874,6 +874,27 @@ class Fusion:
         tups = [(catalog, dataset, series, dataset_format) for series in required_series]
 
         return tups
+    
+    @staticmethod
+    def _is_valid_date_range(dt_str: str) -> bool:
+        """private function - Validate if dt_str is a valid date or date range using normalization logic.
+        Accepts single date or range separated by ':'.
+        """
+        if dt_str in ("latest", "sample"):
+            return True
+        try:
+            _ = normalise_dt_param_str(dt_str)
+            return True
+        except ValueError:
+            return False
+        
+    @staticmethod
+    def _safe_filename_from_iso(dt_str: str) -> str:
+        """private function - convert a string (typically a date or identifier) into a safe filename by
+        replacing any character that is not a digit, letter, or underscore with an underscore.
+        This helps prevent issues when saving files with names that might contain special or
+        invalid characters."""
+        return re.sub(r"[^0-9A-Za-z]", "", dt_str)  
 
     def download(  # noqa: PLR0912, PLR0913
             self,
@@ -930,7 +951,6 @@ class Fusion:
             raise CredentialError(
                 f"You are not subscribed to {dataset} in catalog {catalog}. Please request access."
             )
-        valid_date_range = re.compile(r"^(\d{4}\d{2}\d{2})$|^((\d{4}\d{2}\d{2})?([:])(\d{4}\d{2}\d{2})?)$")
 
         # Check that format is valid and if none, check if there is only one format available
         available_formats = list(self.list_datasetmembers_distributions(dataset, catalog)["format"].unique())
@@ -950,7 +970,7 @@ class Fusion:
                     f"download. Available formats are {available_formats}."
                 )
 
-        if valid_date_range.match(dt_str) or dt_str == "latest":
+        if self._is_valid_date_range(dt_str):
             required_series = self._resolve_distro_tuples(dataset, dt_str, dataset_format, catalog)
         else:
             # sample data is limited to csv
@@ -958,6 +978,15 @@ class Fusion:
                 dataset_format = self.list_distributions(dataset, dt_str, catalog)["identifier"].iloc[0]
             required_series = [(catalog, dataset, dt_str, dataset_format)]
 
+        if not required_series:
+            raise APIResponseError(
+                ValueError(
+                    f"No data available for dataset {dataset} in catalog {catalog} "
+                    f"for the given date/date range ({dt_str})."
+                ),
+                status_code=404,
+            )
+        
         if dataset_format not in RECOGNIZED_FORMATS + ["raw"]:
             raise FileFormatError(f"Dataset format {dataset_format} is not supported")
 
@@ -992,7 +1021,7 @@ class Fusion:
                 "lpath": distribution_to_filename(
                     download_folders[i],
                     series[1],
-                    series[2],
+                    self._safe_filename_from_iso(series[2]),
                     series[3],
                     series[0],
                     partitioning=partitioning,

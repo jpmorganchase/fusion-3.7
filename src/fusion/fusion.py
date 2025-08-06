@@ -880,21 +880,13 @@ class Fusion:
         """private function - Validate if dt_str is a valid date or date range using normalization logic.
         Accepts single date or range separated by ':'.
         """
-        if dt_str in ("latest", "sample"):
+        if dt_str == "latest":
             return True
         try:
             _ = normalise_dt_param_str(dt_str)
             return True
         except ValueError:
             return False
-        
-    @staticmethod
-    def _safe_filename_from_iso(dt_str: str) -> str:
-        """private function - convert a string (typically a date or identifier) into a safe filename by
-        replacing any character that is not a digit, letter, or underscore with an underscore.
-        This helps prevent issues when saving files with names that might contain special or
-        invalid characters."""
-        return re.sub(r"[^0-9A-Za-z]", "", dt_str)  
 
     def download(  # noqa: PLR0912, PLR0913
             self,
@@ -1021,7 +1013,7 @@ class Fusion:
                 "lpath": distribution_to_filename(
                     download_folders[i],
                     series[1],
-                    self._safe_filename_from_iso(series[2]),
+                    series[2],
                     series[3],
                     series[0],
                     partitioning=partitioning,

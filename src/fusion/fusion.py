@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import json as js
 import logging
 import re
@@ -850,16 +851,12 @@ class Fusion:
                 parsed_dates = (parsed_dates[0], parsed_dates[0])
 
             if parsed_dates[0]:
-                datasetseries_list = datasetseries_list[
-                    pd.Series([pd.to_datetime(i, errors="coerce") for i in datasetseries_list["identifier"]])
-                    >= pd.to_datetime(parsed_dates[0])
-                    ].reset_index()
+                start_dt = pd.to_datetime(parsed_dates[0])
+                datasetseries_list = self._filter_datasetseries_by_date(datasetseries_list, start_dt, "ge")
 
             if parsed_dates[1]:
-                datasetseries_list = datasetseries_list[
-                    pd.Series([pd.to_datetime(i, errors="coerce") for i in datasetseries_list["identifier"]])
-                    <= pd.to_datetime(parsed_dates[1])
-                    ].reset_index()
+                end_dt = pd.to_datetime(parsed_dates[1])
+                datasetseries_list = self._filter_datasetseries_by_date(datasetseries_list, end_dt, "le")
 
         if len(datasetseries_list) == 0:
             raise APIResponseError(  # pragma: no cover
@@ -876,17 +873,32 @@ class Fusion:
         return tups
     
     @staticmethod
-    def _is_valid_date_range(dt_str: str) -> bool:
-        """private function - Validate if dt_str is a valid date or date range using normalization logic.
-        Accepts single date or range separated by ':'.
+    def _filter_datasetseries_by_date(
+        datasetseries_list: pd.DataFrame,
+        date_value: datetime.datetime,
+        op: str,
+    ) -> pd.DataFrame:
         """
-        if dt_str == "latest":
-            return True
-        try:
-            _ = normalise_dt_param_str(dt_str)
-            return True
-        except ValueError:
-            return False
+        Private function - Filter datasetseries_list by date or datetime using the given operator ('ge' or 'le').
+        'ge' means greater than or equal to, 'le' means less than or equal to.
+        """
+        if date_value.time() == datetime.time(0, 0):
+            series_dates = pd.Series(
+                [pd.to_datetime(i, errors="coerce").date() for i in datasetseries_list["identifier"]]
+            )
+            cmp_value = date_value.date()
+        else:
+            series_dates = pd.Series([pd.to_datetime(i, errors="coerce") for i in datasetseries_list["identifier"]])
+            cmp_value = date_value
+
+        if op == "ge":
+            mask = series_dates >= cmp_value
+        if op == "le":
+            mask = series_dates <= cmp_value
+
+        result = datasetseries_list[mask].reset_index(drop=True)
+        assert isinstance(result, pd.DataFrame)
+        return result
 
     def download(  # noqa: PLR0912, PLR0913
             self,
@@ -944,6 +956,13 @@ class Fusion:
                 f"You are not subscribed to {dataset} in catalog {catalog}. Please request access."
             )
 
+        valid_date_range = re.compile(
+            r"^((\d{4}([- ]?\d{2}){2}|\d{8})"
+            r"([T ]\d{2}([- ]?\d{2}){1,2})?)?"
+            r"(:((\d{4}([- ]?\d{2}){2}|\d{8})"
+            r"([T ]\d{2}([- ]?\d{2}){1,2})?)?)?$"
+        )
+
         # Check that format is valid and if none, check if there is only one format available
         available_formats = list(self.list_datasetmembers_distributions(dataset, catalog)["format"].unique())
 
@@ -962,7 +981,7 @@ class Fusion:
                     f"download. Available formats are {available_formats}."
                 )
 
-        if self._is_valid_date_range(dt_str):
+        if valid_date_range.match(dt_str) or dt_str == "latest":
             required_series = self._resolve_distro_tuples(dataset, dt_str, dataset_format, catalog)
         else:
             # sample data is limited to csv

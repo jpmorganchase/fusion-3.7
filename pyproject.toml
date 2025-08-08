@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyfusion37"
-version = "0.0.4"
+version = "0.0.5-dev0"
 description = "JPMC Fusion Developer Tools"
 homepage = "https://github.com/jpmorganchase/fusion-3.7"
 readme = "README.md"

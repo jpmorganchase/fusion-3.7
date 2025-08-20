@@ -431,7 +431,7 @@ class FusionCredentials:
 
         response = requests.post(
             self.auth_url,
-            headers={"User-Agent": f"fusion-python-sdk {VERSION}"},
+            headers={"User-Agent": f"fusion-python37-sdk {VERSION}"},
             data=payload,
             proxies=self.http_proxies,
         )
@@ -451,7 +451,7 @@ class FusionCredentials:
 
         headers = {
             "Authorization": f"Bearer {self.bearer_token.token}",
-            "User-Agent": f"fusion-python-sdk {VERSION}",
+            "User-Agent": f"fusion-python37-sdk {VERSION}",
         }
 
         response = requests.get(url, headers=headers, proxies=self.http_proxies)
@@ -469,7 +469,7 @@ class FusionCredentials:
         # Refresh bearer token if needed
         self._refresh_bearer_token(force=False, max_remain_secs=900)  # 15 mins
 
-        ret = {"User-Agent": f"fusion-python-sdk {VERSION}"}
+        ret = {"User-Agent": f"fusion-python37-sdk {VERSION}"}
         if self.fusion_e2e:
             ret["fusion-e2e"] = self.fusion_e2e
 

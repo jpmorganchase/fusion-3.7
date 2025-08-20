@@ -17,7 +17,7 @@ from pytest_mock import MockerFixture
 from fusion import Fusion
 from fusion.attributes import Attribute, Types
 from fusion.credentials import FusionCredentials
-from fusion.exceptions import CredentialError, FileFormatError
+from fusion.exceptions import APIResponseError, CredentialError, FileFormatError
 from fusion.fusion import logger
 from fusion.report import Report
 from fusion.utils import _normalise_dt_param, distribution_to_url
@@ -1117,11 +1117,182 @@ def test_download_multiple_format_error(requests_mock: requests_mock.Mocker, fus
     with pytest.raises(
         FileFormatError,
         match=re.escape(
-            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to download. "
-            "Available formats are ['csv', 'parquet']."
+            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to"
+            "download. Available formats are ['csv', 'parquet']."
         ),
     ):
         fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=None, catalog=catalog)
+
+def test_download_invalid_dt_str_format(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
+    """Test download method when dt_str is not a valid date time format and not available in datasetseries."""
+    catalog = "my_catalog"
+    dataset = "TEST_DATASET"
+    dt_str = "invalid_date_format"  # Invalid date format
+    file_format = "csv"
+
+    # Mock dataset access check
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
+    expected_data = {
+        "catalog": {
+            "@id": "my_catalog/",
+            "description": "my catalog",
+            "title": "my catalog",
+            "identifier": "my_catalog",
+        },
+        "title": "Test Dataset",
+        "identifier": "TEST_DATASET",
+        "status": "Subscribed",  # User has access
+        "@id": "TEST_DATASET/",
+    }
+    requests_mock.get(url, json=expected_data)
+
+    # Mock list_datasetmembers to return some dataset members (but not our invalid date)
+    url_members = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries"
+    requests_mock.get(
+        url_members,
+        json={
+            "resources": [
+                {
+                    "@id": "2020-01-01",
+                    "identifier": "2020-01-01",
+                    "dataset": dataset,
+                    "createdDate": "2020-01-01",
+                }
+            ]
+        },
+    )
+
+    # Mock list_datasetmembers_distributions (changes endpoint) - required for format validation
+    url_distributions = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
+    requests_mock.get(
+        url_distributions,
+        json={
+            "datasets": [
+                {
+                    "key": dataset,
+                    "distributions": [
+                        {
+                            "key": f"{dataset}/20200101/distribution.csv",
+                            "values": [
+                                "2020-01-01T10:00:00Z",
+                                "1000",
+                                "hash1",
+                                catalog,
+                                dataset,
+                                "20200101",
+                                "csv",
+                                "bucket",
+                                "version1",
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    # The download should not create any directories or download any files
+    # It should raise an error because the invalid dt_str doesn't match the regex pattern
+    # and also doesn't exist in the datasetseries
+    with pytest.raises(APIResponseError, match=f"datasetseries '{dt_str}' not found for dataset"):
+        fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
+
+
+def test_download_valid_dt_str_format_not_in_datasetseries(
+    requests_mock: requests_mock.Mocker, fusion_obj: Fusion
+) -> None:
+    """Test download method when dt_str is a valid date time format but not available in datasetseries."""
+    catalog = "my_catalog"
+    dataset = "TEST_DATASET"
+    dt_str = "2020-01-01"  # Valid date format but not available
+    file_format = "csv"
+
+    # Mock dataset access check
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
+    expected_data = {
+        "catalog": {
+            "@id": "my_catalog/",
+            "description": "my catalog",
+            "title": "my catalog",
+            "identifier": "my_catalog",
+        },
+        "title": "Test Dataset",
+        "identifier": "TEST_DATASET",
+        "status": "Subscribed",  # User has access
+        "@id": "TEST_DATASET/",
+    }
+    requests_mock.get(url, json=expected_data)
+
+    # Mock list_datasetmembers to return different dates (not including our target date)
+    url_members = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries"
+    requests_mock.get(
+        url_members,
+        json={
+            "resources": [
+                {
+                    "@id": "2020-02-01",
+                    "identifier": "2020-02-01",
+                    "dataset": dataset,
+                    "createdDate": "2020-02-01",
+                },
+                {
+                    "@id": "2020-03-01",
+                    "identifier": "2020-03-01",
+                    "dataset": dataset,
+                    "createdDate": "2020-03-01",
+                },
+            ]
+        },
+    )
+
+    # Mock list_datasetmembers_distributions to return available formats
+    url_distributions = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
+    requests_mock.get(
+        url_distributions,
+        json={
+            "datasets": [
+                {
+                    "key": dataset,
+                    "distributions": [
+                        {
+                            "key": f"{dataset}/2020-02-01/distribution.csv",
+                            "values": [
+                                "2020-02-01T10:00:00Z",
+                                "1000",
+                                "hash1",
+                                catalog,
+                                dataset,
+                                "2020-02-01",
+                                "csv",
+                                "bucket",
+                                "version1",
+                            ],
+                        },
+                        {
+                            "key": f"{dataset}/2020-03-01/distribution.csv",
+                            "values": [
+                                "2020-03-01T10:00:00Z",
+                                "1000",
+                                "hash2",
+                                catalog,
+                                dataset,
+                                "2020-03-01",
+                                "csv",
+                                "bucket",
+                                "version2",
+                            ],
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
+    # The download should not create any directories or download any files
+    # It should raise an error because while the date format is valid,
+    # no datasetseries exists for the requested date
+    with pytest.raises(APIResponseError, match=f"No data available for dataset {dataset} in catalog {catalog}"):
+        fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
 
 def test_to_df(fusion_obj: Fusion) -> None:
     catalog = "my_catalog"

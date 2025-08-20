@@ -1117,8 +1117,8 @@ def test_download_multiple_format_error(requests_mock: requests_mock.Mocker, fus
     with pytest.raises(
         FileFormatError,
         match=re.escape(
-            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to download. "
-            "Available formats are ['csv', 'parquet']."
+            "Multiple formats found for TEST_DATASET in catalog my_catalog. Dataset format is required to"
+            "download. Available formats are ['csv', 'parquet']."
         ),
     ):
         fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=None, catalog=catalog)
@@ -1196,6 +1196,7 @@ def test_download_invalid_dt_str_format(requests_mock: requests_mock.Mocker, fus
     # and also doesn't exist in the datasetseries
     with pytest.raises(APIResponseError, match=f"datasetseries '{dt_str}' not found for dataset"):
         fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
+
 
 def test_download_valid_dt_str_format_not_in_datasetseries(
     requests_mock: requests_mock.Mocker, fusion_obj: Fusion

@@ -2247,8 +2247,9 @@ def test_fusion_init_logging_enabled_to_stdout_and_file(credentials: FusionCrede
     Fusion(credentials=credentials, enable_logging=True, log_path=log_path)
 
     # Ensure the logger is configured with both handlers
-    assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
-    assert any(isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+    assert any(type(handler) is logging.StreamHandler for handler in logger.handlers)
+    assert any(type(handler) is logging.FileHandler for handler in logger.handlers)
+    assert not any(type(handler) is logging.NullHandler for handler in logger.handlers)
 
     # Verify the log file exists
     log_file = log_path / "fusion_sdk.log"
@@ -2258,17 +2259,41 @@ def test_fusion_init_logging_enabled_to_stdout_and_file(credentials: FusionCrede
 
 
 def test_fusion_init_logging_disabled(credentials: FusionCredentials) -> None:
+    # Clear logger handlers to avoid contamination
+    logger.handlers.clear()
+
+    # Create the Fusion object with logging disabled
+    Fusion(credentials=credentials, enable_logging=False)
+
+    # No additional handlers should be added
+    assert any(type(handler) is logging.StreamHandler for handler in logger.handlers)
+    assert all(type(handler) is not logging.FileHandler for handler in logger.handlers)
+    assert not any(type(handler) is logging.NullHandler for handler in logger.handlers)
+
+    # Clean up
+    logger.handlers.clear()
+
+
+def test_fusion_preserves_existing_handlers(credentials: FusionCredentials) -> None:
+    logger.handlers.clear()
+    custom_handler = logging.StreamHandler()
+    logger.addHandler(custom_handler)
+
+    Fusion(credentials=credentials, enable_logging=False)
+
+    assert logger.handlers == [custom_handler]
+    logger.handlers.clear()
+
+
+def test_fusion_adds_streamhandler_when_no_handlers(credentials: FusionCredentials) -> None:
     logger.handlers.clear()
 
     Fusion(credentials=credentials, enable_logging=False)
 
-    assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
-    assert all(not isinstance(handler, logging.FileHandler) for handler in logger.handlers)
+    assert len(logger.handlers) == 1
+    assert type(logger.handlers[0]) is logging.StreamHandler
 
     logger.handlers.clear()
-
-
-
 
 
 

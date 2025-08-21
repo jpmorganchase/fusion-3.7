@@ -896,8 +896,7 @@ class Fusion:
         date_value: datetime.datetime,
         op: str,
     ) -> pd.DataFrame:
-        """
-        Private function - Filter datasetseries_list by date or datetime using the given operator ('ge' or 'le').
+        """Private function - Filter datasetseries_list by date or datetime using the given operator ('ge' or 'le').
         'ge' means greater than or equal to, 'le' means less than or equal to.
         """
         if date_value.time() == datetime.time(0, 0):
@@ -940,6 +939,8 @@ class Fusion:
                 or both separated with a ":". Defaults to 'latest' which will return the most recent
                 instance of the dataset. If more than one series member exists on the latest date, the
                 series member identifiers will be sorted alphabetically and the last one will be downloaded.
+                dt_str supports these single/range formats - YYYYMMDD, YYYY-MM-DD, YYYYMMDDTHHMM,
+                YYYYMMDDTHHMMSS, YYYY-MM-DDTHH-MM-SS, YYYY-MM-DDTHH-MM
             dataset_format (str, optional): The file format, e.g. CSV or Parquet.
                 Defaults to 'parquet'. If set to None, the function will download
                 if only one format is available, else it will raise an error.
@@ -973,11 +974,14 @@ class Fusion:
             raise CredentialError(
                 f"You are not subscribed to {dataset} in catalog {catalog}. Please request access."
             )
+        
         valid_date_range = re.compile(
-            r"^((\d{4}([- ]?\d{2}){2}|\d{8})"
-            r"([T ]\d{2}([- ]?\d{2}){1,2})?)?"
-            r"(:((\d{4}([- ]?\d{2}){2}|\d{8})"
-            r"([T ]\d{2}([- ]?\d{2}){1,2})?)?)?$"
+            r"^("
+            r"(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?"
+            r"(:(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?)?"
+            r"|"
+            r"(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?"
+            r")$"
         )
 
         # Check that format is valid and if none, check if there is only one format available

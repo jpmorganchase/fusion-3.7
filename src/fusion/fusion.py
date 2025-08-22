@@ -964,7 +964,7 @@ class Fusion:
             partitioning (str, optional): Partitioning specification.
             preserve_original_name (bool, optional): Preserve the original name of the file. Defaults to False. 
 
-        Examples:
+        Examples of dt_str valid range formats:
             dt_str="20220101:20220131"
             dt_str="2022-01-01:2022-01-31"
             dt_str="20220101T0000:20220131T2359"

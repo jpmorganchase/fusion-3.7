@@ -339,7 +339,7 @@ def test_get_fusion_token_headers_no_fusion_token(
     headers = sample_credentials.get_fusion_token_headers("https://example.com/resource")
     assert "Authorization" in headers
     assert headers["Authorization"] == "Bearer test_token"
-    assert headers["User-Agent"].startswith("fusion-python-sdk")
+    assert headers["User-Agent"].startswith("fusion-python37-sdk")
 
 @patch("fusion.credentials.fusion_url_to_auth_url", return_value=("https://fusion.example.com/token", "cat", "ds"))
 def test_get_fusion_token_headers_adds_fusion_token(

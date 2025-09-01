@@ -23,7 +23,7 @@ from fusion.report_attributes import ReportAttribute, ReportAttributes
 
 from .attributes import Attribute, Attributes
 from .credentials import FusionCredentials
-from .dataflow import InputDataFlow, OutputDataFlow
+from .dataflow import Dataflow
 from .dataset import Dataset
 from .exceptions import APIResponseError, CredentialError, FileFormatError
 from .fusion_filesystem import FusionHTTPFileSystem
@@ -1914,189 +1914,6 @@ class Fusion:
         )
         report_obj.client = self
         return report_obj
-
-
-    def input_dataflow(  # noqa: PLR0913
-        self,
-        identifier: str,
-        title: str = "",
-        category: Union[str, List[str], None] = None,
-        description: str = "",
-        frequency: str = "Once",
-        is_internal_only_dataset: bool = False,
-        is_third_party_data: bool = True,
-        is_restricted: Optional[bool] = None,
-        is_raw_data: bool = True,
-        maintainer: Optional[str] = "J.P. Morgan Fusion",
-        source: Union[str, List[str], None] = None,
-        region: Union[str, List[str], None] = None,
-        publisher: str = "J.P. Morgan",
-        product: Union[str, List[str], None] = None,
-        sub_category: Union[str, List[str], None] = None,
-        tags: Union[str, List[str], None] = None,
-        created_date: Optional[str] = None,
-        modified_date: Optional[str] = None,
-        delivery_channel: Union[str, List[str]] = "API",
-        language: str = "English",
-        status: str = "Available",
-        type_: Optional[str] = "Flow",
-        container_type: Optional[str] = "Snapshot-Full",
-        snowflake: Optional[str] = None,
-        complexity: Optional[str] = None,
-        is_immutable: Optional[bool] = None,
-        is_mnpi: Optional[bool] = None,
-        is_pci: Optional[bool] = None,
-        is_pii: Optional[bool] = None,
-        is_client: Optional[bool] = None,
-        is_public: Optional[bool] = None,
-        is_internal: Optional[bool] = None,
-        is_confidential: Optional[bool] = None,
-        is_highly_confidential: Optional[bool] = None,
-        is_active: Optional[bool] = None,
-        owners: Optional[List[str]] = None,
-        application_id: Union[str, Dict[str, str], None] = None,
-        producer_application_id: Optional[Dict[str, str]] = None,
-        consumer_application_id: Union[List[Dict[str, str]], Dict[str, str], None] = None,
-        flow_details: Optional[Dict[str, str]] = None,
-        **kwargs: Any,
-    ) -> InputDataFlow:
-        flow_details = {"flowDirection": "Input"} if flow_details is None else flow_details
-        dataflow_obj = InputDataFlow(
-            identifier=identifier,
-            title=title,
-            category=category,
-            description=description,
-            frequency=frequency,
-            is_internal_only_dataset=is_internal_only_dataset,
-            is_third_party_data=is_third_party_data,
-            is_restricted=is_restricted,
-            is_raw_data=is_raw_data,
-            maintainer=maintainer,
-            source=source,
-            region=region,
-            publisher=publisher,
-            product=product,
-            sub_category=sub_category,
-            tags=tags,
-            created_date=created_date,
-            modified_date=modified_date,
-            delivery_channel=delivery_channel,
-            language=language,
-            status=status,
-            type_=type_,
-            container_type=container_type,
-            snowflake=snowflake,
-            complexity=complexity,
-            is_immutable=is_immutable,
-            is_mnpi=is_mnpi,
-            is_pci=is_pci,
-            is_pii=is_pii,
-            is_client=is_client,
-            is_public=is_public,
-            is_internal=is_internal,
-            is_confidential=is_confidential,
-            is_highly_confidential=is_highly_confidential,
-            is_active=is_active,
-            owners=owners,
-            application_id=application_id,
-            producer_application_id=producer_application_id,
-            consumer_application_id=consumer_application_id,
-            flow_details=flow_details,
-            **kwargs,
-        )
-        dataflow_obj.client = self
-        return dataflow_obj
-
-    def output_dataflow(  # noqa: PLR0913
-        self,
-        identifier: str,
-        title: str = "",
-        category: Union[str, List[str], None] = None,
-        description: str = "",
-        frequency: str = "Once",
-        is_internal_only_dataset: bool = False,
-        is_third_party_data: bool = True,
-        is_restricted: Optional[bool] = None,
-        is_raw_data: bool = True,
-        maintainer: Optional[str] = "J.P. Morgan Fusion",
-        source: Union[str, List[str], None] = None,
-        region: Union[str, List[str], None] = None,
-        publisher: str = "J.P. Morgan",
-        product: Union[str, List[str], None] = None,
-        sub_category: Union[str, List[str], None] = None,
-        tags: Union[str, List[str], None] = None,
-        created_date: Optional[str] = None,
-        modified_date: Optional[str] = None,
-        delivery_channel: Union[str, List[str]] = "API",
-        language: str = "English",
-        status: str = "Available",
-        type_: Optional[str] = "Flow",
-        container_type: Optional[str] = "Snapshot-Full",
-        snowflake: Optional[str] = None,
-        complexity: Optional[str] = None,
-        is_immutable: Optional[bool] = None,
-        is_mnpi: Optional[bool] = None,
-        is_pci: Optional[bool] = None,
-        is_pii: Optional[bool] = None,
-        is_client: Optional[bool] = None,
-        is_public: Optional[bool] = None,
-        is_internal: Optional[bool] = None,
-        is_confidential: Optional[bool] = None,
-        is_highly_confidential: Optional[bool] = None,
-        is_active: Optional[bool] = None,
-        owners: Optional[List[str]] = None,
-        application_id: Union[str, Dict[str, str], None] = None,
-        producer_application_id: Optional[Dict[str, str]] = None,
-        consumer_application_id: Union[List[Dict[str, str]], Dict[str, str], None] = None,
-        flow_details: Optional[Dict[str, str]] = None,
-        **kwargs: Any,
-    ) -> OutputDataFlow:
-        flow_details = {"flowDirection": "Output"} if flow_details is None else flow_details
-        dataflow_obj = OutputDataFlow(
-            identifier=identifier,
-            title=title,
-            category=category,
-            description=description,
-            frequency=frequency,
-            is_internal_only_dataset=is_internal_only_dataset,
-            is_third_party_data=is_third_party_data,
-            is_restricted=is_restricted,
-            is_raw_data=is_raw_data,
-            maintainer=maintainer,
-            source=source,
-            region=region,
-            publisher=publisher,
-            product=product,
-            sub_category=sub_category,
-            tags=tags,
-            created_date=created_date,
-            modified_date=modified_date,
-            delivery_channel=delivery_channel,
-            language=language,
-            status=status,
-            type_=type_,
-            container_type=container_type,
-            snowflake=snowflake,
-            complexity=complexity,
-            is_immutable=is_immutable,
-            is_mnpi=is_mnpi,
-            is_pci=is_pci,
-            is_pii=is_pii,
-            is_client=is_client,
-            is_public=is_public,
-            is_internal=is_internal,
-            is_confidential=is_confidential,
-            is_highly_confidential=is_highly_confidential,
-            is_active=is_active,
-            owners=owners,
-            application_id=application_id,
-            producer_application_id=producer_application_id,
-            consumer_application_id=consumer_application_id,
-            flow_details=flow_details,
-            **kwargs,
-        )
-        dataflow_obj.client = self
-        return dataflow_obj
     
     async def _async_stream_file(self, url: str, chunk_size: int = 100) -> AsyncGenerator[bytes, None]:
         """Return async stream of a file fro mthe given url.
@@ -2337,3 +2154,107 @@ class Fusion:
             pass
 
         return files_df
+
+    def dataflow(  # noqa: PLR0913
+    self,
+    provider_node: Optional[Dict[str, str]] = None,
+    consumer_node: Optional[Dict[str, str]] = None,
+    description: Optional[str] = None,
+    alternative_id: Optional[Dict[str, Any]] = None,
+    transport_type: Optional[str] = None,
+    frequency: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    boundary_sets: Optional[List[Dict[str, Any]]] = None,
+    data_assets: Optional[List[Dict[str, Any]]] = None,
+    id: Optional[str] = None,  # noqa: A002
+    **kwargs: Any,
+) -> Dataflow:
+        """Instantiate a Dataflow object bound to this Fusion client.
+
+        You may instantiate with just an ``id`` (useful for ``update()``, ``update_fields()``, or ``delete()``);
+        however, **creating** a new data flow via ``create()`` requires valid provider/consumer nodes.
+
+        Args:
+            provider_node (dict[str, str] | None, optional):
+                Provider/source node details. Expected keys: ``name`` and ``dataNodeType``.
+            consumer_node (dict[str, str] | None, optional):
+                Consumer/target node details. Expected keys: ``name`` and ``dataNodeType``.
+            description (str | None, optional):
+                Purpose/summary of the data flow (if provided, must not be blank).
+            alternative_id (dict[str, Any] | None, optional):
+                Alternative identifier object (e.g., ``{"value": "...", "domain": "...", "isSor": true}``).
+            transport_type (str | None, optional):
+                Transport mechanism (e.g., ``"API"``, ``"FILE TRANSFER"``, ``"SYNCHRONOUS MESSAGING"``).
+            frequency (str | None, optional):
+                Flow cadence (e.g., ``"DAILY"``, ``"WEEKLY"``, ``"MONTHLY"``, etc.).
+            start_time (str | None, optional):
+                Scheduled start time (e.g., ``"HH:mm:ss"`` or ISO-8601 with zone).
+            end_time (str | None, optional):
+                Scheduled end time (e.g., ``"HH:mm:ss"`` or ISO-8601 with zone).
+            boundary_sets (list[dict[str, Any]] | None, optional):
+                Boundary set objects associated with the flow.
+            data_assets (list[dict[str, Any]] | None, optional):
+                Related data asset objects.
+            id (str | None, optional):
+                Server-assigned identifier; required for ``update()``, ``update_fields()``, and ``delete()``.
+            **kwargs (Any):
+                Additional fields supported by the API; passed through to the Dataflow dataclass.
+
+        Returns:
+            Dataflow: A Dataflow instance with this Fusion client attached.
+
+        Examples:
+            Create a handle with full details (ready for ``create()``):
+
+            >>> flow = fusion.dataflow(
+            ...     provider_node={"name": "CRM_DB", "dataNodeType": "Database"},
+            ...     consumer_node={"name": "DWH", "dataNodeType": "Database"},
+            ...     description="CRM → DWH nightly load",
+            ...     frequency="DAILY",
+            ...     transport_type="API",
+            ... )
+
+            Create a handle for an existing flow by ID (for update/delete):
+
+            >>> flow = fusion.dataflow(id="abc-123")
+            >>> flow.delete()
+        """
+        df_obj = Dataflow(
+            providerNode=provider_node,
+            consumerNode=consumer_node,
+            description=description,
+            alternativeId=alternative_id,
+            transportType=transport_type,
+            frequency=frequency,
+            startTime=start_time,
+            endTime=end_time,
+            boundarySets=boundary_sets or [],
+            dataAssets=data_assets or [],
+            id=id,
+            **kwargs,
+        )
+        df_obj.client = self
+        return df_obj
+
+    def list_dataflows(
+        self,
+        id_contains: str,
+        output: bool = False,
+    ) -> pd.DataFrame:
+            """Retrieve a single dataflow from the Fusion system."""
+
+            url = f"{self._get_new_root_url()}/api/corelineage-service/v1/lineage/dataflows/{id_contains}"
+            resp = self.session.get(url)
+
+            if resp.status_code == HTTPStatus.OK:
+                list_df = json_normalize(resp.json())
+                if output:
+                    pass
+                return list_df
+            else:
+                resp.raise_for_status()
+
+            # fallback empty frame if something unexpected happens
+            return pd.DataFrame()
+

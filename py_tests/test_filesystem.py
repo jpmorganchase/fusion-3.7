@@ -352,7 +352,7 @@ async def test_fetch_range_success(
     example_creds_dict: Dict[str, Any], 
     tmp_path: Path
 ) -> None:
-    url = "http://example.com/data"
+    url = "http://example.com/data?file=file"
     output_file = MagicMock(spec=io.IOBase)
     output_file.path = "./output_file_path/file.txt"
     output_file.seek = MagicMock()
@@ -390,7 +390,7 @@ async def test_fetch_range_success(
     output_file.seek.assert_called_once_with(0)
     output_file.write.assert_called_once_with(b"some data")
     mock_response.raise_for_status.assert_not_called()
-    mock_session.get.assert_called_once_with(url + f"?downloadRange=bytes={start}-{end-1}", **http_fs_instance.kwargs)
+    mock_session.get.assert_called_once_with(url + f"&downloadRange=bytes={start}-{end-1}", **http_fs_instance.kwargs)
 
 
 @pytest.mark.parametrize(
@@ -494,13 +494,20 @@ def test_download(  # noqa: PLR0913
     mock_response.raise_for_status = asynctest.CoroutineMock()
     mock_response.headers = {"Content-Length": "100", "x-jpmc-file-name": "original_file.txt"}
 
-    mock_session.head.return_value = mock_response 
+    mock_session.head.return_value = mock_response
+    if not overwrite and not preserve_original_name:
+        lfs.exists.return_value = True
+    else:
+        lfs.exists.return_value = False
 
     # Act
     result = fs.download(lfs, rpath, lpath, chunk_size, overwrite, preserve_original_name)
 
     # Assert
-    if overwrite:
+    if not overwrite and not preserve_original_name:
+        # only case where early return happens
+        assert result == (True, lpath, None)
+    else:
         assert result == ("mocked_return", "mocked_lpath", "mocked_extra")
         mock_get.assert_called_once_with(
             str(rpath),
@@ -508,11 +515,7 @@ def test_download(  # noqa: PLR0913
             chunk_size=chunk_size,
             headers={"Content-Length": "100", "x-jpmc-file-name": "original_file.txt"},
             is_local_fs=False,
-        )
-    elif preserve_original_name:
-        assert result == (True, Path(expected_lpath), None)
-    else:
-        assert result == (True, lpath, None)
+        )    
 
 @patch.object(FusionHTTPFileSystem, "get", return_value=("mocked_return", "mocked_lpath", "mocked_extra"))
 @patch.object(FusionHTTPFileSystem, "set_session", new_callable=asynctest.CoroutineMock)

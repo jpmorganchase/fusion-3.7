@@ -159,8 +159,7 @@ def cpu_count(thread_pool_size: Optional[int] = None, is_threading: bool = False
     thread_pool_size = mp.cpu_count() if mp.cpu_count() else DEFAULT_THREAD_POOL_SIZE
     return thread_pool_size
 
-
-def _normalise_dt_param(dt: Union[str, int, datetime, date]) -> str:
+def _normalise_dt_param(dt: str | int | datetime | date) -> str:
     """Convert dates into a normalised string representation.
 
     Args:
@@ -169,6 +168,7 @@ def _normalise_dt_param(dt: Union[str, int, datetime, date]) -> str:
     Returns:
         str: A normalized date string.
     """
+
     if isinstance(dt, (date, datetime)):
         return dt.strftime("%Y-%m-%d")
 
@@ -178,25 +178,19 @@ def _normalise_dt_param(dt: Union[str, int, datetime, date]) -> str:
     if not isinstance(dt, str):
         raise ValueError(f"{dt} is not in a recognised data format")
 
-    matches = DT_YYYY_MM_DD_RE.match(dt)
-    if matches:
-        yr = matches.group(1)
-        mth = matches.group(2).zfill(2)
-        day = matches.group(3).zfill(2)
-        return f"{yr}-{mth}-{day}"
+    dt_clean = re.sub(r"[ \-:T]", "", dt)
 
-    matches = DT_YYYYMMDD_RE.match(dt)
-
-    if matches:
-        return "-".join(matches.groups())
-
-    matches = DT_YYYYMMDDTHHMM_RE.match(dt)
-
-    if matches:
-        return "-".join(matches.groups())
+    for candidate in (dt, dt_clean):
+        try:
+            ts = pd.to_datetime(candidate, errors="raise")
+        except (ValueError, TypeError):
+            continue
+        if ts.time() != datetime.min.time():
+            return ts.strftime("%Y-%m-%dT%H:%M:%S")
+        else:
+            return ts.strftime("%Y-%m-%d")
 
     raise ValueError(f"{dt} is not in a recognised data format")
-
 
 def normalise_dt_param_str(dt: str) -> Tuple[str, ...]:
     """Convert a date parameter which may be a single date or a date range into a tuple.
@@ -222,6 +216,7 @@ def distribution_to_filename(
     file_format: str,
     catalog: str = "common",
     partitioning: Optional[str] = None,
+    file_name: Optional[str] = None,
 ) -> str:
     """Returns a filename representing a dataset distribution.
 
@@ -232,6 +227,7 @@ def distribution_to_filename(
         file_format (str): The file type, e.g. CSV or Parquet
         catalog (str, optional): The data catalog containing the dataset. Defaults to "common".
         partitioning (str, optional): Partitioning specification.
+        file_name (str, optional): Explicit filename override.  Defaults to None.
 
     Returns:
         str: FQ distro file name
@@ -239,15 +235,18 @@ def distribution_to_filename(
     if datasetseries[-1] == "/" or datasetseries[-1] == "\\":
         datasetseries = datasetseries[0:-1]
 
-    if partitioning == "hive":
-        file_name = f"{dataset}.{file_format}"
-    else:
-        file_name = f"{dataset}__{catalog}__{datasetseries}.{file_format}"
+    if file_name and file_name != file_format:
+        # Use explicit filename directly
+        final_name = f"{file_name}.{file_format}"
+    elif partitioning == "hive":        
+        final_name = f"{dataset}.{file_format}"
+    else:        
+        final_name = f"{dataset}__{catalog}__{datasetseries}.{file_format}"
 
     sep = "/"
     if "\\" in root_folder:
         sep = "\\"
-    return f"{root_folder}{sep}{file_name}"
+    return f"{root_folder}{sep}{final_name}"
 
 
 def _filename_to_distribution(file_name: str) -> Tuple[str, str, str, str]:
@@ -271,6 +270,7 @@ def distribution_to_url(
     file_format: str,
     catalog: str = "common",
     is_download: bool = False,
+    file_name: Optional[str] = None,
 ) -> str:
     """Returns the API URL to download a dataset distribution.
 
@@ -281,6 +281,7 @@ def distribution_to_url(
         file_format (str): The file type, e.g. CSV or Parquet
         catalog (str, optional): The data catalog containing the dataset. Defaults to "common".
         is_download (bool, optional): Is url for download
+        file_name (str, optional): Explicit filename override.  Defaults to None.
 
     Returns:
         str: A URL for the API distribution endpoint.
@@ -293,7 +294,7 @@ def distribution_to_url(
     if is_download:
         return (
             f"{root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries/"
-            f"{datasetseries}/distributions/{file_format}/operationType/download"
+            f"{datasetseries}/distributions/{file_format}/files/operationType/download?file={file_name}"
         )
     return (
         f"{root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries/" f"{datasetseries}/distributions/{file_format}"

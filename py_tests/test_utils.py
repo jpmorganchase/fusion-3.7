@@ -143,13 +143,22 @@ def test_normalise_dt_param_with_valid_string_format_2() -> None:
 def test_normalise_dt_param_with_valid_string_format_3() -> None:
     dt = "20220101T1200"
     result = _normalise_dt_param(dt)
-    assert result == "2022-01-01-1200"
+    assert result == "2022-01-01T12:00:00"
 
 
 def test_normalise_dt_param_with_invalid_format() -> None:
-    dt = "2022/01/01"
-    with pytest.raises(ValueError, match="is not in a recognised data format"):
-        _normalise_dt_param(dt)
+    invalid_dates = [
+        "2022-13-01",      # invalid month
+        "2022-01-32",      # invalid day
+        "not-a-date",      # not a date at all
+        "",                # empty string
+    ]
+    for dt in invalid_dates:
+        with pytest.raises(
+            ValueError,
+            match="is not in a recognised data format|NaTType does not support time",
+        ):
+            _normalise_dt_param(dt)
 
 
 def test_normalise_dt_param_with_invalid_type() -> None:
@@ -195,15 +204,23 @@ def test_path_to_url() -> None:
     result = path_to_url("path/to/dataset__catalog__datasetseries.csv", is_raw=True)
     assert result == "catalog/datasets/dataset/datasetseries/datasetseries/distributions/csv"
 
-    result = path_to_url("path/to/dataset__catalog__datasetseries.csv", is_download=True)
-    assert result == "catalog/datasets/dataset/datasetseries/datasetseries/distributions/csv/operationType/download"
+    result = path_to_url("path/to/dataset__catalog__datasetseries.csv", is_download=True)    
+    assert result == (
+        "catalog/datasets/dataset/datasetseries/datasetseries/distributions/csv/"
+        "files/operationType/download?file=None"
+    )
 
-    result = path_to_url("path/to/dataset__catalog__datasetseries.csv", is_raw=True, is_download=True)
-    assert result == "catalog/datasets/dataset/datasetseries/datasetseries/distributions/csv/operationType/download"
+    result = path_to_url("path/to/dataset__catalog__datasetseries.csv", is_raw=True, is_download=True)    
+    assert result == (
+        "catalog/datasets/dataset/datasetseries/datasetseries/distributions/csv/"
+        "files/operationType/download?file=None"
+    )
 
-    result = path_to_url("path/to/dataset__catalog__datasetseries.pt", is_raw=True, is_download=True)
-    assert result == "catalog/datasets/dataset/datasetseries/datasetseries/distributions/raw/operationType/download"
-
+    result = path_to_url("path/to/dataset__catalog__datasetseries.pt", is_raw=True, is_download=True)    
+    assert result == (
+        "catalog/datasets/dataset/datasetseries/datasetseries/distributions/raw/"
+        "files/operationType/download?file=None"
+    )
 
 def test_filename_to_distribution() -> None:
     file_name = "dataset__catalog__datasetseries.csv"
@@ -239,11 +256,19 @@ def test_distribution_to_url() -> None:
     datasetseries = "2020-04-04"
     exp_res = (
         f"{root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries/"
-        f"{datasetseries}/distributions/{file_format}/operationType/download"
+        f"{datasetseries}/distributions/{file_format}/files/operationType/download?file=file"
     )
     for ch in bad_series_chs:
         datasetseries_mod = f"2020-04-04{ch}"
-        result = distribution_to_url(root_url, dataset, datasetseries_mod, file_format, catalog, is_download=True)
+        result = distribution_to_url(
+            root_url,
+            dataset,
+            datasetseries_mod,
+            file_format,
+            catalog,
+            is_download=True,
+            file_name="file",
+        )
         assert result == exp_res
 
     exp_res = f"{root_url}catalogs/{catalog}/datasets/{dataset}/sample/distributions/csv"

@@ -558,7 +558,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
 
         async def fetch() -> None:
             async with session.get(
-                url + f"?downloadRange=bytes={start}-{end-1}", **self.kwargs
+                url + f"&downloadRange=bytes={start}-{end-1}", **self.kwargs
             ) as response:
                 if response.status in [200, 206]:
                     chunk = await response.read()
@@ -733,14 +733,9 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
                 return r.headers
 
         try:
-            headers = sync(self.loop, get_headers)
-            if (
-                "x-jpmc-file-name" in headers.keys() and preserve_original_name  # noqa: SIM118
-            ):  # noqa: SIM118
-                file_name = headers.get("x-jpmc-file-name")
-                lpath = Path(lpath).parent.joinpath(file_name)
-                if not overwrite and lfs.exists(lpath):
-                    return True, lpath, None
+            headers = sync(self.loop, get_headers)           
+            if not overwrite and lfs.exists(lpath):
+                return True, lpath, None
         except Exception as ex:  # noqa: BLE001
             headers = {}
             logger.info(f"Failed to get headers for {rpath}", exc_info=ex)

@@ -12,6 +12,8 @@ from .utils import (
     CamelCaseMeta,
     camel_to_snake,
     convert_date_format,
+    ensure_resources,
+    handle_paginated_request,
     make_bool,
     requests_raise_for_status,
     snake_to_camel,
@@ -798,11 +800,10 @@ class Attributes:
         client = self._use_client(client)
         catalog = client._use_catalog(catalog)
         url = f"{client.root_url}catalogs/{catalog}/datasets/{dataset}/attributes"
-        response = client.session.get(url)
-        requests_raise_for_status(response)
-        list_attributes = response.json()["resources"]
+        response = handle_paginated_request(client.session, url)
+        ensure_resources(response)
+        list_attributes = response["resources"]
         list_attributes = sorted(list_attributes, key=lambda x: x["index"])
-
         self.attributes = [Attribute._from_dict(attr_data) for attr_data in list_attributes]
         return self
 

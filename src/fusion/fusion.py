@@ -1,4 +1,5 @@
 """Python 3.7 SDK for J.P. Morgan's Fusion platform."""
+
 from __future__ import annotations
 
 import copy
@@ -35,6 +36,7 @@ from .utils import (
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
+    ensure_resources,
     file_name_to_url,
     get_default_fs,
     get_session,
@@ -77,10 +79,7 @@ class Fusion:
             pandas.DataFrame: A dataframe containing the requested data.
         """
         response_data = handle_paginated_request(session, url)
-        if "resources" not in response_data or not response_data["resources"]:
-            raise APIResponseError(
-                ValueError("No data found"),
-            )
+        ensure_resources(response_data)
 
         ret_df = pd.DataFrame(response_data["resources"]).reset_index(drop=True)
         return ret_df

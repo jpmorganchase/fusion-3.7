@@ -13,6 +13,8 @@ from .utils import (
     _is_json,
     camel_to_snake,
     convert_date_format,
+    ensure_resources,
+    handle_paginated_request,
     make_bool,
     make_list,
     requests_raise_for_status,
@@ -302,9 +304,10 @@ class Product(metaclass=CamelCaseMeta):
         client = self._use_client(client)
         catalog = client._use_catalog(catalog)
 
-        resp = client.session.get(f"{client.root_url}catalogs/{catalog}/products")
-        requests_raise_for_status(resp)
-        list_products = resp.json()["resources"]
+        url = f"{client.root_url}catalogs/{catalog}/products"
+        resp = handle_paginated_request(client.session, url)
+        ensure_resources(resp)
+        list_products = resp["resources"]
         filtered_products = [dict_ for dict_ in list_products if dict_["identifier"] == self.identifier]
         if not filtered_products:
             raise ValueError(f"Product with identifier '{self.identifier}' not found in catalog '{catalog}'.")

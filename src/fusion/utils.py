@@ -1,4 +1,5 @@
 
+
 """Fusion utilities."""
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ from dateutil import parser
 from requests import Session
 from tqdm import tqdm
 from urllib3.util.retry import Retry
+
+from fusion.exceptions import APIResponseError
 
 from .authentication import FusionAiohttpSession, FusionOAuthAdapter
 
@@ -739,3 +742,8 @@ def _merge_responses(responses: list[dict[str, Any]]) -> dict[str, Any]:
                 merged[key].extend(response[key])
 
     return merged
+
+def ensure_resources(resp: dict[str, Any]) -> None:
+    """Raise APIResponseError if 'resources' key is missing or empty in the response."""
+    if "resources" not in resp or not resp["resources"]:
+        raise APIResponseError(ValueError("No data found"))

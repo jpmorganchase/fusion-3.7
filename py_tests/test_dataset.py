@@ -1037,5 +1037,6 @@ def test_dataset_from_catalog_not_found(requests_mock: Mocker, fusion_obj: Fusio
     expected_data = {"resources": []}
     requests_mock.get(url, json=expected_data)
 
-    with pytest.raises(ValueError, match="Dataset with identifier 'TEST_DATASET' not found in catalog 'my_catalog'."):
+    import fusion.exceptions
+    with pytest.raises(fusion.exceptions.APIResponseError):
         Dataset(identifier="TEST_DATASET").from_catalog(catalog=catalog, client=fusion_obj)

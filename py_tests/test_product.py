@@ -556,7 +556,6 @@ def test_product_from_catalog_not_found(requests_mock: requests_mock.Mocker, fus
     }
     requests_mock.get(url, json=expected_data)
 
-    import fusion.exceptions
-    with pytest.raises(fusion.exceptions.APIResponseError):
+    with pytest.raises(ValueError, match="Product with identifier 'TEST_PRODUCT' not found in catalog 'my_catalog'."):
         Product(identifier="TEST_PRODUCT").from_catalog(client=fusion_obj, catalog=catalog)
 

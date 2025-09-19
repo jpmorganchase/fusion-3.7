@@ -8,14 +8,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import pandas as pd
 
-from fusion.exceptions import APIResponseError
-
 from .utils import (
     CamelCaseMeta,
     _is_json,
     camel_to_snake,
     convert_date_format,
-    handle_paginated_request,
     make_bool,
     make_list,
     requests_raise_for_status,
@@ -355,13 +352,9 @@ class Dataset(metaclass=CamelCaseMeta):
         client = self._use_client(client)
         catalog = client._use_catalog(catalog)
         dataset = self.identifier
-        url = f"{client.root_url}catalogs/{catalog}/datasets"
-        resp = handle_paginated_request(client.session, url)
-        if "resources" not in resp or not resp["resources"]:
-            raise APIResponseError(
-                ValueError("No data found"),
-            )
-        list_datasets = resp["resources"]
+        resp = client.session.get(f"{client.root_url}catalogs/{catalog}/datasets")
+        requests_raise_for_status(resp)
+        list_datasets = resp.json()["resources"]
         matching_datasets = [dict_ for dict_ in list_datasets if dict_["identifier"] == dataset]
         if not matching_datasets:
             raise ValueError(f"Dataset with identifier '{dataset}' not found in catalog '{catalog}'.")

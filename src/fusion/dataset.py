@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import pandas as pd
 
+from fusion.exceptions import APIResponseError
+
 from .utils import (
     CamelCaseMeta,
     _is_json,
@@ -280,6 +282,10 @@ class Dataset(metaclass=CamelCaseMeta):
         """
         keys = [f.name for f in fields(cls)]
         keys = ["type" if key == "type_" else key for key in keys]
+        
+        if "tag" in data:
+            data["tags"] = data.pop("tag")
+
         data = {camel_to_snake(k): v for k, v in data.items()}
         data = {k: v for k, v in data.items() if k in keys}
         if "type" in data:
@@ -354,6 +360,7 @@ class Dataset(metaclass=CamelCaseMeta):
         client = self._use_client(client)
         catalog = client._use_catalog(catalog)
         dataset = self.identifier
+
         url = f"{client.root_url}catalogs/{catalog}/datasets"
         resp = handle_paginated_request(client.session, url)
         ensure_resources(resp)
@@ -367,9 +374,14 @@ class Dataset(metaclass=CamelCaseMeta):
 
         prod_df = client.list_product_dataset_mapping(catalog=catalog)
 
-        if dataset.lower() in list(prod_df.dataset.str.lower()):
-            product = [prod_df[prod_df["dataset"].str.lower() == dataset.lower()]["product"].iloc[0]]
-            dataset_obj.product = product
+        try:
+            prod_df = client.list_product_dataset_mapping(catalog=catalog)
+
+            if dataset.lower() in list(prod_df.dataset.str.lower()):
+                product = [prod_df[prod_df["dataset"].str.lower() == dataset.lower()]["product"].iloc[0]]
+                dataset_obj.product = product
+        except APIResponseError:
+            pass
 
         return dataset_obj
     
@@ -385,11 +397,10 @@ class Dataset(metaclass=CamelCaseMeta):
             >>> dataset = fusion.dataset("my_dataset")
             >>> dataset_dict = dataset.to_dict()
         """
-        return {
-            snake_to_camel(k): v
-            for k, v in self.__dict__.items()
-            if not k.startswith("_")
-        }
+        dataset_dict = {snake_to_camel(k): v for k, v in self.__dict__.items() if not k.startswith("_")}
+        if "tags" in dataset_dict:
+            dataset_dict["tag"] = dataset_dict.pop("tags")
+        return dataset_dict
 
     def create(
         self,

@@ -13,6 +13,7 @@ from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from zipfile import ZipFile
 
 import pandas as pd
 from pandas.io.json import json_normalize
@@ -44,6 +45,9 @@ from .utils import (
     is_dataset_raw,
     normalise_dt_param_str,
     path_to_url,
+    read_csv,
+    read_json,
+    read_parquet,
     requests_raise_for_status,
     upload_files,
     validate_file_formats,
@@ -1005,9 +1009,7 @@ class Fusion:
         valid_date_range = re.compile(
             r"^("
             r"(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?"
-            r"(:(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?)?"
-            r"|"
-            r"(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?"
+            r"(:(\d{4}([- ]?\d{2}){2}|\d{8})([T ]\d{2}([- ]?\d{2}){1,2})?)"
             r")$"
         )
 
@@ -1200,8 +1202,53 @@ class Fusion:
             results.append(Fusion._call_for_bytes_object(url, self.session))
 
         # Return single BytesIO if only one file, else list
-        return results[0] if len(results) == 1 else results        
+        return results[0] if len(results) == 1 else results
 
+    def to_table(  # noqa: PLR0913
+            self,
+            dataset: str,
+            dt_str: str = "latest",
+            dataset_format: str = "parquet",
+            catalog: str | None = None,
+            n_par: int | None = None,
+            show_progress: bool = True,
+            columns: list[str] | None = None,
+            filters: Any | None = None,
+            force_download: bool = False,
+            download_folder: str | None = None,
+            **kwargs: Any,
+    ) -> Any:
+        """Gets distributions for a specified date or date range and returns the data as an arrow table.
+
+        Args:
+            dataset (str): A dataset identifier
+            dt_str (str, optional): Either a single date or a range identified by a start or end date,
+                or both separated with a ":". Defaults to 'latest' which will return the most recent
+                instance of the dataset.
+            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
+            catalog (str, optional): A catalog identifier. Defaults to 'common'.
+            n_par (int, optional): Specify how many distributions to download in parallel.
+                Defaults to all cpus available.
+            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
+            columns (List, optional): A list of columns to return from a parquet file. Defaults to None
+            filters (List, optional): List[Tuple] or List[List[Tuple]] or None (default)
+                Rows which do not match the filter predicate will be removed from scanned data.
+                Partition keys embedded in a nested directory structure will be exploited to avoid
+                loading files at all if they contain no matching rows. If use_legacy_dataset is True,
+                filters can only reference partition keys and only a hive-style directory structure
+                is supported. When setting use_legacy_dataset to False, also within-file level filtering
+                and different partitioning schemes are supported.
+                More on https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+            force_download (bool, optional): If True then will always download a file even
+                if it is already on disk. Defaults to False.
+            download_folder (str, optional): The path, absolute or relative, where downloaded files are saved.
+                Defaults to download_folder as set in __init__
+        Returns:
+            class:`pyarrow.Table`: a dataframe containing the requested data.
+                If multiple dataset instances are retrieved then these are concatenated first.
+        """
+        raise NotImplementedError("Method not implemented")
+    
     def upload(  # noqa: PLR0913, PLR0915
             self,
             path: str,
@@ -1949,19 +1996,19 @@ class Fusion:
         return final_bytes
 
     def to_df(  # noqa: PLR0913
-            self,
-            dataset: str,
-            dt_str: str = "latest",
-            dataset_format: str = "parquet",
-            catalog: str | None = None,
-            n_par: int | None = None,
-            show_progress: bool = True,
-            columns: list[str] | None = None,
-            filters: Any | None = None,
-            force_download: bool = False,
-            download_folder: str | None = None,
-            dataframe_type: str = "pandas",            
-            **kwargs: Any,
+        self,
+        dataset: str,
+        dt_str: str = "latest",
+        dataset_format: str = "parquet",
+        catalog: str | None = None,
+        n_par: int | None = None,
+        show_progress: bool = True,
+        columns: list[str] | None = None,
+        force_download: bool = False,
+        download_folder: str | None = None,
+        dataframe_type: str = "pandas",
+        file_name: str | list[str] | None = None,
+        **kwargs: Any,
     ) -> pd.DataFrame:
         """Gets distributions for a specified date or date range and returns the data as a dataframe.
 
@@ -1975,70 +2022,122 @@ class Fusion:
             n_par (int, optional): Specify how many distributions to download in parallel.
                 Defaults to all cpus available.
             show_progress (bool, optional): Display a progress bar during data download Defaults to True.
-            columns (List, optional): A list of columns to return from a parquet file. Defaults to None
-            filters (List, optional): List[Tuple] or List[List[Tuple]] or None (default)
-                Rows which do not match the filter predicate will be removed from scanned data.
-                Partition keys embedded in a nested directory structure will be exploited to avoid
-                loading files at all if they contain no matching rows. If use_legacy_dataset is True,
-                filters can only reference partition keys and only a hive-style directory structure
-                is supported. When setting use_legacy_dataset to False, also within-file level filtering
-                and different partitioning schemes are supported.
-                More on https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+            columns (List, optional): A list of columns to return. Defaults to None (all columns).
             force_download (bool, optional): If True then will always download a file even
                 if it is already on disk. Defaults to False.
             download_folder (str, optional): The path, absolute or relative, where downloaded files are saved.
                 Defaults to download_folder as set in __init__
-            dataframe_type (str, optional): Type
+            dataframe_type (str, optional): Type of dataframe to return ('pandas' or 'polars').
+            file_name (str | list[str] | None, optional): Specific file(s) to fetch.
+                This can be a single file name or a list of file names.
+                The file name should match exactly the name of the file in the distribution with out format.
+                If not provided, fetch all available distribution files.
         Returns:
             class:`pandas.DataFrame`: a dataframe containing the requested data.
                 If multiple dataset instances are retrieved then these are concatenated first.
         """
-        raise NotImplementedError("Method not implemented")
+        catalog = self._use_catalog(catalog)
 
-    def to_table(  # noqa: PLR0913
-            self,
-            dataset: str,
-            dt_str: str = "latest",
-            dataset_format: str = "parquet",
-            catalog: str | None = None,
-            n_par: int | None = None,
-            show_progress: bool = True,
-            columns: list[str] | None = None,
-            filters: Any | None = None,
-            force_download: bool = False,
-            download_folder: str | None = None,
-            **kwargs: Any,
-    ) -> Any:
-        """Gets distributions for a specified date or date range and returns the data as an arrow table.
+        # sample data is limited to csv
+        if dt_str == "sample":
+            dataset_format = "csv"
 
-        Args:
-            dataset (str): A dataset identifier
-            dt_str (str, optional): Either a single date or a range identified by a start or end date,
-                or both separated with a ":". Defaults to 'latest' which will return the most recent
-                instance of the dataset.
-            dataset_format (str, optional): The file format, e.g. CSV or Parquet. Defaults to 'parquet'.
-            catalog (str, optional): A catalog identifier. Defaults to 'common'.
-            n_par (int, optional): Specify how many distributions to download in parallel.
-                Defaults to all cpus available.
-            show_progress (bool, optional): Display a progress bar during data download Defaults to True.
-            columns (List, optional): A list of columns to return from a parquet file. Defaults to None
-            filters (List, optional): List[Tuple] or List[List[Tuple]] or None (default)
-                Rows which do not match the filter predicate will be removed from scanned data.
-                Partition keys embedded in a nested directory structure will be exploited to avoid
-                loading files at all if they contain no matching rows. If use_legacy_dataset is True,
-                filters can only reference partition keys and only a hive-style directory structure
-                is supported. When setting use_legacy_dataset to False, also within-file level filtering
-                and different partitioning schemes are supported.
-                More on https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
-            force_download (bool, optional): If True then will always download a file even
-                if it is already on disk. Defaults to False.
-            download_folder (str, optional): The path, absolute or relative, where downloaded files are saved.
-                Defaults to download_folder as set in __init__
-        Returns:
-            class:`pyarrow.Table`: a dataframe containing the requested data.
-                If multiple dataset instances are retrieved then these are concatenated first.
-        """
-        raise NotImplementedError("Method not implemented")
+        if not download_folder:
+            download_folder = self.download_folder
+
+        download_res = self.download(
+            dataset,
+            dt_str,
+            dataset_format,
+            catalog,
+            n_par,
+            show_progress,
+            force_download,
+            download_folder,
+            return_paths=True,
+            file_name=file_name,
+        )
+
+        if not download_res:
+            raise ValueError("Must specify 'return_paths=True' in download call to use this function")
+
+        if not all(res[0] for res in download_res):
+            failed_res = [res for res in download_res if not res[0]]
+            raise Exception(
+                f"Not all downloads were successfully completed. "
+                f"Re-run to collect missing files. The following failed:\n{failed_res}"
+            )
+
+        files = [res[1] for res in download_res]
+
+        pd_read_fn_map = {
+            "csv": read_csv,
+            "parquet": read_parquet,
+            "parq": read_parquet,
+            "json": read_json,
+            "raw": read_csv,
+        }
+
+        pd_read_default_kwargs: dict[str, dict[str, object]] = {
+            "csv": {
+                "columns": columns,
+                "fs": self.fs,
+                "dataframe_type": dataframe_type,
+            },
+            "parquet": {
+                "columns": columns,
+                "fs": self.fs,
+                "dataframe_type": dataframe_type,
+            },
+            "json": {
+                "columns": columns,
+                "fs": self.fs,
+                "dataframe_type": dataframe_type,
+            },
+            "raw": {
+                "columns": columns,
+                "fs": self.fs,
+                "dataframe_type": dataframe_type,
+            },
+        }
+
+        pd_read_default_kwargs["parq"] = pd_read_default_kwargs["parquet"]
+
+        pd_reader = pd_read_fn_map.get(dataset_format)
+        pd_read_kwargs = pd_read_default_kwargs.get(dataset_format, {})
+        if not pd_reader:
+            raise Exception(f"No pandas function to read file in format {dataset_format}")
+
+        pd_read_kwargs.update(kwargs)
+
+        if len(files) == 0:
+            raise APIResponseError(
+                Exception(
+                    f"No series members for dataset: {dataset} in date or date range: {dt_str} "
+                    f"and format: {dataset_format}"
+                ),
+                status_code=404,
+            )
+        if dataset_format in ["parquet", "parq"]:
+            data_df = pd_reader(files, **pd_read_kwargs)  # type: ignore
+        elif dataset_format == "raw":
+            dataframes = (
+                pd.concat(
+                    [pd_reader(ZipFile(f).open(p), **pd_read_kwargs) for p in ZipFile(f).namelist()],  # type: ignore  # noqa: SIM115
+                    ignore_index=True,
+                )
+                for f in files
+            )
+            data_df = pd.concat(dataframes, ignore_index=True)
+        else:
+            dataframes = (pd_reader(f, **pd_read_kwargs) for f in files)  # type: ignore
+            if dataframe_type == "pandas":
+                data_df = pd.concat(dataframes, ignore_index=True)
+            if dataframe_type == "polars":
+                import polars as pl
+                data_df = pl.concat(dataframes, how="diagonal")  # type: ignore
+
+        return data_df
 
     def listen_to_events(
             self,

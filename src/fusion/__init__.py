@@ -2,7 +2,7 @@
 
 __author__ = "Fusion Devs"
 __email__ = "fusion_developers@jpmorgan.com"
-__version__ = "1.0.1-dev0"
+__version__ = "1.0.2-dev0"
 
 from .fusion import Fusion  # Import the core Fusion class
 

@@ -980,7 +980,7 @@ def test_dataset_case_switching() -> None:
         "publisher": "J.P. Morgan",
         "product": ["TEST_PRODUCT"],
         "subCategory": ["subCategory"],
-        "tags": ["tag1", "tag2"],
+        "tag": ["tag1", "tag2"],
         "createdDate": "2020-05-05",
         "modifiedDate": "2020-05-05",
         "deliveryChannel": ["API"],

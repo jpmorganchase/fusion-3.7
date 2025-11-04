@@ -11,6 +11,8 @@ import multiprocessing as mp
 import os
 import re
 import ssl
+import zipfile
+from contextlib import nullcontext
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
@@ -34,6 +36,8 @@ from .authentication import FusionAiohttpSession, FusionOAuthAdapter
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+    import pyarrow as pa
 
     from .credentials import FusionCredentials
 
@@ -747,3 +751,280 @@ def ensure_resources(resp: dict[str, Any]) -> None:
     """Raise APIResponseError if 'resources' key is missing or empty in the response."""
     if "resources" not in resp or not resp["resources"]:
         raise APIResponseError(ValueError("No data found"))
+    
+
+def csv_to_table(
+    path: str,
+    fs: fsspec.filesystem  | None = None,
+    columns: list[str] | None = None,
+) -> pa.Table:
+    """Reads csv data to pyarrow table.
+
+    Args:
+        path (str): path to the file.
+        fs: filesystem object.
+        columns: columns to read.
+
+    Returns:
+        class:`pyarrow.Table` pyarrow table with the data.
+    """
+    import pyarrow as pa
+    from pyarrow import csv
+    
+    # Read CSV file
+    with fs.open(path) if fs else nullcontext(path) as f:
+        tbl = csv.read_csv(f)
+    
+    # Select columns if specified (PyArrow 0.17.1 compatible method)
+    if columns is not None:
+        # PyArrow 0.17.1 doesn't have .select(), use column indexing
+        schema = pa.schema([tbl.schema.field(col) for col in columns])
+        arrays = [tbl.column(col) for col in columns]
+        tbl = pa.Table.from_arrays(arrays, schema=schema)
+    
+    return tbl
+
+
+def json_to_table(
+    path: str,
+    fs: fsspec.filesystem | None = None,
+    columns: list[str] | None = None,
+) -> pa.Table:
+    """Reads json data to pyarrow table.
+
+    Args:
+        path: path to json file.
+        fs: filesystem.
+        columns: columns to read.
+
+    Returns:
+        class:`pyarrow.Table` pyarrow table with the data.
+    """
+    import pyarrow as pa
+    from pyarrow import json
+    
+    # Read JSON file
+    with fs.open(path) if fs else nullcontext(path) as f:
+        tbl = json.read_json(f)
+    
+    # Select columns if specified (PyArrow 0.17.1 compatible method)
+    if columns is not None:
+        # PyArrow 0.17.1 doesn't have .select(), use column indexing
+        schema = pa.schema([tbl.schema.field(col) for col in columns])
+        arrays = [tbl.column(col) for col in columns]
+        tbl = pa.Table.from_arrays(arrays, schema=schema)
+    
+    return tbl
+
+
+PathLikeT = Union[str, Path]
+
+
+def parquet_to_table(
+    path: PathLikeT | list[PathLikeT],
+    fs: fsspec.filesystem | None = None,
+    columns: list[str] | None = None,
+) -> pa.Table:
+    """Reads parquet data to pyarrow table.
+
+    Args:
+        path: path to parquet file or list of paths.
+        fs: filesystem.
+        columns: columns to read.
+
+    Returns:
+        class:`pyarrow.Table` pyarrow table with the data.
+    """
+    import pyarrow.parquet as pq
+
+    # Read parquet dataset
+    return pq.ParquetDataset(
+        path,
+        filesystem=fs,
+        memory_map=True,
+    ).read(columns=columns)
+
+
+def read_csv(  # noqa: PLR0912
+    path: str | zipfile.ZipFile,
+    columns: list[str] | None = None,
+    fs: fsspec.filesystem | None = None,
+    dataframe_type: str = "pandas",
+) -> pd.DataFrame | pa.Table:
+    """Reads csv with column selection.
+
+    Args:
+        path (str): path to the csv file.
+        columns: list of columns to read.
+        fs: filesystem object.
+        dataframe_type (str, optional): Dataframe type 'pandas' or 'polars'.
+
+    Returns:
+        Union[pandas.DataFrame, polars.DataFrame]: a dataframe containing the data.
+
+    """
+    
+    if isinstance(path, zipfile.ZipExtFile):
+        res = pd.read_csv(path, usecols=columns, index_col=False)
+    elif isinstance(path, str):
+        try:
+            try:
+                res = csv_to_table(path, fs, columns=columns)
+
+                if dataframe_type == "pandas":
+                    res = res.to_pandas()
+                elif dataframe_type == "polars":
+                    import polars as pl
+
+                    res = pl.from_arrow(res)
+                else:
+                    raise ValueError(f"Unknown DataFrame type {dataframe_type}")
+            except Exception as err:
+                logger.log(
+                    VERBOSE_LVL,
+                    "Failed to read %s, with comma delimiter.",
+                    path,
+                    exc_info=True,
+                )
+                raise ValueError from err
+
+        except Exception:  # noqa: BLE001
+            logger.log(
+                VERBOSE_LVL,
+                "Could not parse %s properly. Trying with pandas csv reader.",
+                path,
+                exc_info=True,
+            )
+            try:  # pragma: no cover
+                with fs.open(path) if fs else nullcontext(path) as f:
+                    if dataframe_type == "pandas":
+                        res = pd.read_csv(f, usecols=columns, index_col=False)
+                    elif dataframe_type == "polars":
+                        import polars as pl
+
+                        res = pl.read_csv(f, columns=columns)
+                    else:
+                        raise ValueError(f"Unknown DataFrame type {dataframe_type}")  # noqa: W0707
+
+            except Exception as err:  # noqa: BLE001
+                logger.log(
+                    VERBOSE_LVL,
+                    "Could not parse %s properly. Trying with pandas csv reader pandas engine.",
+                    path,
+                    exc_info=True,
+                )
+                with fs.open(path) if fs else nullcontext(path) as f:
+                    if dataframe_type == "pandas":
+                        res = pd.read_table(  # pragma: no cover
+                            f,
+                            usecols=columns,
+                            index_col=False,
+                            engine="python",
+                            delimiter=None,
+                        )
+                    else:
+                        raise ValueError(f"Unknown DataFrame type {dataframe_type}") from err
+    return res
+
+
+def read_json(
+    path: str,
+    columns: list[str] | None = None,
+    fs: fsspec.filesystem | None = None,
+    dataframe_type: str = "pandas",
+) -> pd.DataFrame | pa.Table:
+    """Read json file(s) with column selection.
+
+    Args:
+        path (str): path to json file.
+        columns (list): list of columns to read.
+        fs: filesystem object.
+        dataframe_type (str, optional): Dataframe type 'pandas' or 'polars'.
+
+    Returns:
+        Union[pandas.DataFrame, polars.DataFrame]: a dataframe containing the data.
+    """
+
+    try:
+        try:
+            res = json_to_table(path, fs, columns=columns)
+            if dataframe_type == "pandas":
+                res = res.to_pandas()
+            elif dataframe_type == "polars":
+                import polars as pl
+
+                res = pl.from_arrow(res)
+            else:
+                raise ValueError(f"Unknown DataFrame type {dataframe_type}")
+        except Exception as err:
+            logger.log(
+                VERBOSE_LVL,
+                "Failed to read %s, with arrow reader. %s",
+                path,
+                err,
+            )
+            raise err
+
+    except Exception:  # noqa: BLE001
+        logger.log(
+            VERBOSE_LVL,
+            "Could not parse %s properly. Trying with pandas json reader.",
+            path,
+            exc_info=True,
+        )
+        try:  # pragma: no cover
+            with fs.open(path) if fs else nullcontext(path) as f:
+                if dataframe_type == "pandas":
+                    res = pd.read_json(f)
+                elif dataframe_type == "polars":
+                    import polars as pl
+
+                    res = pl.read_json(f)
+                else:
+                    raise ValueError(f"Unknown DataFrame type {dataframe_type}")
+
+        except Exception as err:
+            logger.log(VERBOSE_LVL, f"Could not parse {path} properly. ", exc_info=True)
+            raise err  # pragma: no cover
+    return res
+
+
+def read_parquet(
+    path: PathLikeT,
+    columns: list[str] | None = None,
+    fs: fsspec.filesystem | None = None,
+    dataframe_type: str = "pandas",
+) -> pd.DataFrame | pa.Table:
+    """Read parquet file(s) with column selection.
+
+    Args:
+        path (PathLikeT): path or list of paths to parquet files.
+        columns (list): list of columns to read.
+        fs: filesystem object.
+        dataframe_type (str, optional): Dataframe type 'pandas' or 'polars'.
+
+    Returns:
+        Union[pandas.DataFrame, polars.DataFrame]: a dataframe containing the data.
+
+    """
+    import pyarrow.parquet as pq
+
+    paths = path if isinstance(path, list) else [path]
+    dataframes = []
+    for p in paths:
+        if fs:
+            with fs.open(p, 'rb') as f:
+                table = pq.read_table(f, columns=columns)
+                df = table.to_pandas()
+        else:
+            table = pq.read_table(p, columns=columns)
+            df = table.to_pandas()
+        dataframes.append(df)
+    
+    df = pd.concat(dataframes, ignore_index=True) if len(dataframes) > 1 else dataframes[0]
+    
+    if dataframe_type == "polars":
+        import polars as pl
+        return pl.from_pandas(df)
+    
+    return df

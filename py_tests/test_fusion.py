@@ -836,6 +836,32 @@ def test_to_bytes_with_filename(requests_mock: requests_mock.Mocker, fusion_obj:
     if isinstance(data, BytesIO):
         assert data.getbuffer() == expected_data
 
+
+def test_validate_format_single_format(mocker: MockerFixture, fusion_obj: Fusion) -> None:
+    """Test _validate_format returns the only available format when dataset_format is None."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    
+    mock_df = pd.DataFrame({"format": ["csv"]})
+    mocker.patch.object(fusion_obj, "list_datasetmembers_distributions", return_value=mock_df)
+    
+    result = fusion_obj._validate_format(dataset, catalog, None)
+    assert result == "csv"
+
+
+def test_validate_format_valid_format(mocker: MockerFixture, fusion_obj: Fusion) -> None:
+    """Test _validate_format returns the requested format when it's available."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    
+    mock_df = pd.DataFrame({"format": ["csv", "parquet", "json"]})
+    mocker.patch.object(fusion_obj, "list_datasetmembers_distributions", return_value=mock_df)
+    
+    result = fusion_obj._validate_format(dataset, catalog, "parquet")
+    
+    assert result == "parquet"
+
+
 @pytest.mark.skip(reason="MUST FIX")
 def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
@@ -843,9 +869,67 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
     dt_str = "20200101:20200103"
     file_format = "csv"
 
+    # Mock dataset access check
+    url = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}"
+    expected_data = {
+        "catalog": {"@id": f"{catalog}/"},
+        "title": "Test Dataset",
+        "identifier": dataset,
+        "status": "Subscribed",  # User has access
+        "@id": f"{dataset}/",
+    }
+    requests_mock.get(url, json=expected_data)
+    
+    # Mock list_datasetmembers (datasetseries endpoint)
+    url_datasetseries = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/{dataset}/datasetseries"
+    requests_mock.get(url_datasetseries, json={
+        "resources": [
+            {
+                "identifier": "series1",
+                "@id": "series1/",
+                "title": "Test Series 1"
+            },
+            {
+                "identifier": "sample",
+                "@id": "sample/",
+                "title": "Sample Series"
+            }
+        ]
+    })
+
+    # Mock list_datasetmembers_distributions for format validation
+    url_distributions = f"{fusion_obj.root_url}catalogs/{catalog}/datasets/changes?datasets={dataset}"
+    requests_mock.get(
+        url_distributions,
+        json={
+            "datasets": [
+                {
+                    "key": dataset,
+                    "distributions": [
+                        {
+                            "key": f"{dataset}/2020-01-01/distribution.csv",
+                            "values": ["2020-01-01T10:00:00Z", "1000", "hash1", catalog, dataset, "2020-01-01", "csv", 
+                                       "bucket", "version1"],
+                        },
+                        {
+                            "key": f"{dataset}/2020-01-02/distribution.csv", 
+                            "values": ["2020-01-02T10:00:00Z", "1000", "hash2", catalog, dataset, "2020-01-02", "csv", 
+                                       "bucket", "version2"],
+                        },
+                        {
+                            "key": f"{dataset}/2020-01-03/distribution.csv",
+                            "values": ["2020-01-03T10:00:00Z", "1000", "hash3", catalog, dataset, "2020-01-03", "csv", 
+                                       "bucket", "version3"],
+                        },
+                    ],
+                }
+            ]
+        },
+    )
+
     # Dates for mocking _resolve_distro_tuples response
     dates = ["2020-01-01", "2020-01-02", "2020-01-03"]
-    patch_res = [(catalog, dataset, dt, "parquet") for dt in dates]
+    patch_res = [(catalog, dataset, dt, file_format) for dt in dates]
 
     # Mock _resolve_distro_tuples method
     mocker.patch.object(
@@ -854,28 +938,32 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
         return_value=patch_res,
     )
 
-    # Mock download_single_file_threading return values
-    dwn_load_res = [
-        (True, f"{fusion_obj.download_folder}/{dataset}__{catalog}__{dt}.{file_format}", None) for dt in dates
-    ]
-    mocker.patch(
-        "fusion.fusion.download_single_file_threading",
-        return_value=dwn_load_res,
+    # Mock list_distribution_files to return single file per distribution
+    mock_files_df = pd.DataFrame({"@id": ["file1"], "identifier": ["file1"]})
+    mocker.patch.object(
+        fusion_obj,
+        "list_distribution_files",
+        return_value=mock_files_df,
     )
 
-    # Mock stream_single_file_new_session return value
-    mocker.patch("fusion.fusion.stream_single_file_new_session", return_value=dwn_load_res[0])
+    # Mock filesystem download method
+    download_result = (True, f"{fusion_obj.download_folder}/test_file.{file_format}", None)
+    mock_filesystem = mocker.MagicMock()
+    mock_filesystem.download.return_value = download_result
+    mocker.patch.object(fusion_obj, "get_fusion_filesystem", return_value=mock_filesystem)
 
-    # Call the download method and check results
+    # Test 1: Basic download without return_paths
     res = fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
-    assert not res
+    assert res is None
 
+    # Test 2: Download with return_paths
     res = fusion_obj.download(
         dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog, return_paths=True
     )
-    assert res
-    assert len(res[0]) == len(dates)
+    assert res is not None
+    assert len(res) == len(dates)
 
+    # Test 3: Download with show_progress=False
     res = fusion_obj.download(
         dataset=dataset,
         dt_str=dt_str,
@@ -884,9 +972,10 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
         return_paths=True,
         show_progress=False,
     )
-    assert res
+    assert res is not None
     assert len(res) == len(dates)
 
+    # Test 4: Download with hive partitioning
     res = fusion_obj.download(
         dataset=dataset,
         dt_str=dt_str,
@@ -895,17 +984,20 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
         return_paths=True,
         partitioning="hive",
     )
-    assert res
+    assert res is not None
     assert len(res) == len(dates)
 
+    # Test 5: Download with "latest" dt_str
     res = fusion_obj.download(
         dataset=dataset, dt_str="latest", dataset_format=file_format, catalog=catalog, return_paths=True
     )
-    assert res
-    assert len(res[0]) == len(dates)
+    assert res is not None
+    assert len(res) == len(dates)
 
-    # Test error handling
-    mocker.patch("fusion.fusion.stream_single_file_new_session", return_value=(False, "my_file.dat", "Some Err"))
+    # Test 6: Error handling - mock failed downloads
+    failed_download_result = (False, "my_file.dat", "Some Error")
+    mock_filesystem.download.return_value = failed_download_result
+    
     res = fusion_obj.download(
         dataset=dataset,
         dt_str=dt_str,
@@ -914,17 +1006,29 @@ def test_download_main(mocker: MockerFixture, fusion_obj: Fusion) -> None:
         return_paths=True,
         show_progress=False,
     )
-    assert res
-    assert len(res[0]) == len(dates)
+    assert res is not None
+    assert len(res) == len(dates)
     for r in res:
-        assert not r[0]
+        assert not r[0]  # All downloads should have failed
 
+    # Test 7: Sample download
+    # Mock sample-specific behavior
+    mocker.patch.object(
+        fusion_obj,
+        "list_distributions",
+        return_value=pd.DataFrame({"identifier": [file_format]}),
+    )
+    
+    # Reset filesystem mock for successful download
+    sample_download_result = (True, f"{fusion_obj.download_folder}/{dataset}__sample__{catalog}.{file_format}", None)
+    mock_filesystem.download.return_value = sample_download_result
+    
     res = fusion_obj.download(
         dataset=dataset, dt_str="sample", dataset_format=file_format, catalog=catalog, return_paths=True
     )
-    assert res
+    assert res is not None
     assert len(res) == 1
-    assert res[0][0]
+    assert res[0][0]  # Should be successful
     assert "sample" in res[0][1]
 
 def test_download_no_access(requests_mock: requests_mock.Mocker, fusion_obj: Fusion) -> None:
@@ -1402,27 +1506,220 @@ def test_download_valid_dt_str_format_not_in_datasetseries(
     # The download should not create any directories or download any files
     # It should raise an error because while the date format is valid,
     # no datasetseries exists for the requested date
-    with pytest.raises(APIResponseError, match=f"No data available for dataset {dataset} in catalog {catalog}"):
+    with pytest.raises(
+        APIResponseError,
+        match=f"datasetseries '{dt_str}' not found for dataset '{dataset}' in catalog '{catalog}'",
+    ):
         fusion_obj.download(dataset=dataset, dt_str=dt_str, dataset_format=file_format, catalog=catalog)
 
-def test_to_df(fusion_obj: Fusion) -> None:
+def test_to_df(mocker: MockerFixture, fusion_obj: Fusion, tmp_path: Path) -> None:
+    """Test to_df method returns pandas DataFrame."""
     catalog = "my_catalog"
     dataset = "my_dataset"
-    datasetseries = "2020-04-04"
+    dt_str = "2020-04-04"
     file_format = "csv"
-    # expect raise NotImplementedError
-    with pytest.raises(NotImplementedError):
-        fusion_obj.to_df(catalog=catalog, dataset=dataset, dt_str=datasetseries, dataset_format=file_format)
+    
+    mock_download_res = [(True, str(tmp_path / f"{dataset}__test.{file_format}"), None)]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    csv_file = tmp_path / f"{dataset}__test.{file_format}"
+    csv_file.write_text("col1,col2\n1,2\n3,4\n")
+    
+    result = fusion_obj.to_df(
+        dataset=dataset,
+        dt_str=dt_str,
+        dataset_format=file_format,
+        catalog=catalog
+    )
+    
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 2
+    assert list(result.columns) == ["col1", "col2"]
 
 
-def test_to_table(fusion_obj: Fusion) -> None:
+def test_to_df_parquet(mocker: MockerFixture, fusion_obj: Fusion, tmp_path: Path) -> None:
+    """Test to_df method with parquet format."""
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    
     catalog = "my_catalog"
     dataset = "my_dataset"
-    datasetseries = "2020-04-04"
+    dt_str = "2020-04-04"
+    file_format = "parquet"
+    
+    parquet_file = tmp_path / f"{dataset}__test.{file_format}"
+    mock_download_res = [(True, str(parquet_file), None)]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    table = pa.table({"col1": [1, 3], "col2": [2, 4]})
+    pq.write_table(table, str(parquet_file))
+    
+    result = fusion_obj.to_df(
+        dataset=dataset,
+        dt_str=dt_str,
+        dataset_format=file_format,
+        catalog=catalog
+    )
+    
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 2
+    assert list(result.columns) == ["col1", "col2"]
+
+
+def test_to_df_with_columns(mocker: MockerFixture, fusion_obj: Fusion, tmp_path: Path) -> None:
+    """Test to_df method with column selection."""
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    dt_str = "2020-04-04"
+    file_format = "parquet"
+    
+    parquet_file = tmp_path / f"{dataset}__test.{file_format}"
+    mock_download_res = [(True, str(parquet_file), None)]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    table = pa.table({"col1": [1, 3], "col2": [2, 4], "col3": [5, 6]})
+    pq.write_table(table, str(parquet_file))
+    
+    result = fusion_obj.to_df(
+        dataset=dataset,
+        dt_str=dt_str,
+        dataset_format=file_format,
+        catalog=catalog,
+        columns=["col1", "col2"]
+    )
+    
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 2
+    assert list(result.columns) == ["col1", "col2"]
+
+
+def test_to_df_json(mocker: MockerFixture, fusion_obj: Fusion, tmp_path: Path) -> None:
+    """Test to_df method with JSON format."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    dt_str = "2020-04-04"
+    file_format = "json"
+    
+    json_file = tmp_path / f"{dataset}__test.{file_format}"
+    mock_download_res = [(True, str(json_file), None)]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    import json
+    json_data = [{"col1": 1, "col2": 2}, {"col1": 3, "col2": 4}]
+    json_file.write_text(json.dumps(json_data))
+    
+    result = fusion_obj.to_df(
+        dataset=dataset,
+        dt_str=dt_str,
+        dataset_format=file_format,
+        catalog=catalog
+    )
+    
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 2
+
+
+def test_to_df_sample(mocker: MockerFixture, fusion_obj: Fusion, tmp_path: Path) -> None:
+    """Test to_df method with sample data."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    dt_str = "sample"
+    
+    csv_file = tmp_path / f"{dataset}__sample.csv"
+    mock_download_res = [(True, str(csv_file), None)]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    csv_file.write_text("col1,col2\n10,20\n30,40\n")
+    
+    result = fusion_obj.to_df(
+        dataset=dataset,
+        dt_str=dt_str,
+        catalog=catalog
+    )
+    
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 2
+
+
+def test_to_df_no_download_results(mocker: MockerFixture, fusion_obj: Fusion) -> None:
+    """Test to_df raises ValueError when download returns no results."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    dt_str = "2020-04-04"
     file_format = "csv"
-    # expect raise NotImplementedError
-    with pytest.raises(NotImplementedError):
-        fusion_obj.to_table(catalog=catalog, dataset=dataset, dt_str=datasetseries, dataset_format=file_format)
+    
+    mocker.patch.object(fusion_obj, "download", return_value=None)
+    
+    with pytest.raises(ValueError, match="Must specify 'return_paths=True'"):
+        fusion_obj.to_df(
+            dataset=dataset,
+            dt_str=dt_str,
+            dataset_format=file_format,
+            catalog=catalog
+        )
+
+
+def test_to_df_failed_downloads(mocker: MockerFixture, fusion_obj: Fusion) -> None:
+    """Test to_df raises Exception when downloads fail."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    dt_str = "2020-04-04"
+    file_format = "csv"
+    
+    mock_download_res = [(False, "failed_file.csv", "Download error")]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    with pytest.raises(Exception, match="Not all downloads were successfully completed"):
+        fusion_obj.to_df(
+            dataset=dataset,
+            dt_str=dt_str,
+            dataset_format=file_format,
+            catalog=catalog
+        )
+
+
+def test_to_table_minimal_params(fusion_obj: Fusion) -> None:
+    """Test to_table raises NotImplementedError with minimal parameters."""
+    pytest.importorskip("pyarrow")
+    
+    with pytest.raises(NotImplementedError, match="Method not implemented"):
+        fusion_obj.to_table(dataset="my_dataset")
+
+
+def test_to_table_typical_usage(fusion_obj: Fusion) -> None:
+    """Test to_table raises NotImplementedError with typical parameters."""
+    pytest.importorskip("pyarrow")
+    
+    with pytest.raises(NotImplementedError, match="Method not implemented"):
+        fusion_obj.to_table(
+            dataset="my_dataset",
+            dt_str="2020-04-04",
+            dataset_format="parquet",
+            catalog="my_catalog",
+            columns=["col1", "col2"]
+        )
+
+
+def test_to_table_all_params(fusion_obj: Fusion, tmp_path: Path) -> None:
+    """Test to_table raises NotImplementedError with all parameters."""
+    pytest.importorskip("pyarrow")
+    
+    with pytest.raises(NotImplementedError, match="Method not implemented"):
+        fusion_obj.to_table(
+            dataset="my_dataset",
+            dt_str="2020-04-04:2020-04-10",
+            dataset_format="csv",
+            catalog="my_catalog",
+            n_par=4,
+            show_progress=False,
+            columns=["col1", "col2"],
+            filters=[("col1", ">", 100)],
+            force_download=True,
+            download_folder=str(tmp_path)
+        )
 
 def test_listen_to_events(fusion_obj: Fusion) -> None:
     catalog = "my_catalog"
@@ -2436,6 +2733,96 @@ def test_list_distribution_files_with_max_results(fusion_obj: Fusion, requests_m
     )
     assert len(df_over_limit) == TOTAL_FILES
     assert df_over_limit["@id"].tolist() == ["file1", "file2"]
+
+
+def test_to_df_invalid_format(mocker: MockerFixture, fusion_obj: Fusion) -> None:
+    """Test to_df raises Exception for unsupported format."""
+    catalog = "my_catalog"
+    dataset = "my_dataset"
+    dt_str = "2020-04-04"
+    file_format = "unsupported_format"
+    
+    mock_download_res = [(True, "file.unsupported", None)]
+    mocker.patch.object(fusion_obj, "download", return_value=mock_download_res)
+    
+    with pytest.raises(Exception, match="No pandas function to read file in format"):
+        fusion_obj.to_df(
+            dataset=dataset,
+            dt_str=dt_str,
+            dataset_format=file_format,
+            catalog=catalog
+        )
+
+
+def test_get_new_root_url_with_api_v1_suffix(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test _get_new_root_url removes /api/v1/ suffix."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials, root_url="https://example.com/api/v1/")
+    normalized = fusion._get_new_root_url()
+    assert normalized == "https://example.com"
+
+
+def test_get_new_root_url_with_v1_suffix(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test _get_new_root_url removes /v1/ suffix."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials, root_url="https://example.com/v1/")
+    normalized = fusion._get_new_root_url()
+    assert normalized == "https://example.com"
+
+
+def test_report_attribute_creation(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test report_attribute method creates ReportAttribute with client."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials)
+    attr = fusion.report_attribute(
+        sourceIdentifier="test_id",
+        title="Test Title",
+        description="Test Description",
+        technicalDataType="String",
+        path="Test.Path"
+    )
+    assert attr.sourceIdentifier == "test_id"
+    assert attr.title == "Test Title"
+    assert attr.client == fusion
+
+
+def test_report_attributes_creation(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test report_attributes method creates ReportAttributes with client."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials)
+    attrs = fusion.report_attributes()
+    assert len(attrs.attributes) == 0
+    assert attrs.client == fusion
+
+
+def test_reports_wrapper_creation(example_creds_dict_token: Dict[str, str]) -> None:
+    """Test reports method creates ReportsWrapper with client."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials)
+    reports = fusion.reports()
+    assert reports.client == fusion
+
+
+def test_link_attributes_to_terms_with_default_iskde(
+    example_creds_dict_token: Dict[str, str], mocker: MockerFixture
+) -> None:
+    """Test link_attributes_to_terms adds default isKDE=True."""
+    credentials = FusionCredentials(bearer_token=example_creds_dict_token['token'])
+    fusion = Fusion(credentials=credentials)
+    
+    mock_link = mocker.patch("fusion.report.Report.link_attributes_to_terms", return_value={})
+    
+    mappings = [
+        {
+            "attribute": {"id": "attr1"},
+            "term": {"id": "term1"}
+        }
+    ]
+    
+    fusion.link_attributes_to_terms(report_id="test_report", mappings=mappings)
+    
+    call_args = mock_link.call_args
+    assert call_args[1]["mappings"][0]["isKDE"] is True
 
 
 

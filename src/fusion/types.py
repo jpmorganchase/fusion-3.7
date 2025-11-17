@@ -1,4 +1,5 @@
 from queue import Queue
-from typing import Tuple
+from typing import Any, Union
 
-WorkerQueueT = Queue[Tuple[int, int, int]]
+WorkerQueueT = Queue[tuple[int, int, int]]
+PyArrowFilterT = Union[list[tuple[Any]], list[list[tuple[Any]]]]

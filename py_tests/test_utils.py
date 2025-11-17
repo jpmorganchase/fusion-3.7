@@ -24,6 +24,7 @@ from fusion.utils import (
     cpu_count,
     distribution_to_filename,
     distribution_to_url,
+    ensure_resources,
     file_name_to_url,
     get_session,
     handle_paginated_request,
@@ -720,4 +721,528 @@ def test_merge_responses_mixed_types() -> None:
     assert merged['resources'] == [1, 2, 3]
     assert merged['meta'] == 'foo'
     assert merged['other'] == 123
+
+
+def test_csv_to_table(tmp_path: Path) -> None:
+    """Test csv_to_table reads CSV and returns pyarrow Table."""
+    pa = pytest.importorskip("pyarrow")
+    from fusion.utils import csv_to_table
+    
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text("col1,col2,col3\n1,2,3\n4,5,6\n")
+    
+    table = csv_to_table(str(csv_file))
+    
+    assert isinstance(table, pa.Table)
+    assert len(table) == 2
+    assert table.column_names == ["col1", "col2", "col3"]
+    assert table.column("col1").to_pylist() == [1, 4]
+
+
+def test_csv_to_table_with_columns(tmp_path: Path) -> None:
+    """Test csv_to_table with column selection."""
+    pa = pytest.importorskip("pyarrow")
+    from fusion.utils import csv_to_table
+    
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text("col1,col2,col3\n1,2,3\n4,5,6\n")
+    
+    table = csv_to_table(str(csv_file), columns=["col1", "col3"])
+    
+    assert isinstance(table, pa.Table)
+    assert len(table) == 2
+    assert table.column_names == ["col1", "col3"]
+
+
+def test_csv_to_table_with_filesystem(tmp_path: Path) -> None:
+    """Test csv_to_table with fsspec filesystem."""
+    pa = pytest.importorskip("pyarrow")
+    from fusion.utils import csv_to_table
+    
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text("col1,col2\n1,2\n3,4\n")
+    
+    fs = fsspec.filesystem("file")
+    table = csv_to_table(str(csv_file), fs=fs)
+    
+    assert isinstance(table, pa.Table)
+    assert len(table) == 2
+    assert table.column_names == ["col1", "col2"]
+
+
+def test_json_to_table(tmp_path: Path) -> None:
+    """Test json_to_table reads JSON and returns pyarrow Table."""
+    pa = pytest.importorskip("pyarrow")
+    from fusion.utils import json_to_table
+    
+    json_file = tmp_path / "test.json"
+    json_data = [
+        {"col1": 1, "col2": 2, "col3": 3},
+        {"col1": 4, "col2": 5, "col3": 6}
+    ]
+    json_file.write_text("\n".join(json.dumps(row) for row in json_data))
+    
+    table = json_to_table(str(json_file))
+    
+    assert isinstance(table, pa.Table)
+    assert len(table) == 2
+    assert set(table.column_names) == {"col1", "col2", "col3"}
+
+
+def test_json_to_table_with_columns(tmp_path: Path) -> None:
+    """Test json_to_table with column selection."""
+    pa = pytest.importorskip("pyarrow")
+    from fusion.utils import json_to_table
+    
+    json_file = tmp_path / "test.json"
+    json_data = [
+        {"col1": 1, "col2": 2, "col3": 3},
+        {"col1": 4, "col2": 5, "col3": 6}
+    ]
+    json_file.write_text("\n".join(json.dumps(row) for row in json_data))
+    
+    table = json_to_table(str(json_file), columns=["col1", "col3"])
+    
+    assert isinstance(table, pa.Table)
+    assert len(table) == 2
+    assert set(table.column_names) == {"col1", "col3"}
+
+
+def test_json_to_table_with_filesystem(tmp_path: Path) -> None:
+    """Test json_to_table with fsspec filesystem."""
+    pa = pytest.importorskip("pyarrow")
+    from fusion.utils import json_to_table
+    
+    json_file = tmp_path / "test.json"
+    json_data = [
+        {"col1": 1, "col2": 2},
+        {"col1": 3, "col2": 4}
+    ]
+    json_file.write_text("\n".join(json.dumps(row) for row in json_data))
+    
+    fs = fsspec.filesystem("file")
+    table = json_to_table(str(json_file), fs=fs)
+    
+    assert isinstance(table, pa.Table)
+    assert len(table) == 2
+
+
+def test_parquet_to_table(tmp_path: Path) -> None:
+    """Test parquet_to_table reads Parquet and returns pyarrow Table."""
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    from fusion.utils import parquet_to_table
+    
+    # Create a test Parquet file
+    parquet_file = tmp_path / "test.parquet"
+    table = pa.table({
+        "col1": [1, 4, 7],
+        "col2": [2, 5, 8],
+        "col3": [3, 6, 9]
+    })
+    pq.write_table(table, str(parquet_file))
+    
+    result = parquet_to_table(str(parquet_file))
+    
+    assert isinstance(result, pa.Table)
+    assert len(result) == 3
+    assert result.column_names == ["col1", "col2", "col3"]
+    assert result.column("col1").to_pylist() == [1, 4, 7]
+
+
+def test_parquet_to_table_with_columns(tmp_path: Path) -> None:
+    """Test parquet_to_table with column selection."""
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    from fusion.utils import parquet_to_table
+    
+    parquet_file = tmp_path / "test.parquet"
+    table = pa.table({
+        "col1": [1, 4, 7],
+        "col2": [2, 5, 8],
+        "col3": [3, 6, 9]
+    })
+    pq.write_table(table, str(parquet_file))
+    
+    result = parquet_to_table(str(parquet_file), columns=["col1", "col3"])
+    
+    assert isinstance(result, pa.Table)
+    assert len(result) == 3
+    assert result.column_names == ["col1", "col3"]
+    assert result.column("col1").to_pylist() == [1, 4, 7]
+    assert result.column("col3").to_pylist() == [3, 6, 9]
+
+
+def test_parquet_to_table_multiple_files(tmp_path: Path) -> None:
+    """Test parquet_to_table with multiple files."""
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    from fusion.utils import parquet_to_table
+    
+    parquet_file1 = tmp_path / "test1.parquet"
+    parquet_file2 = tmp_path / "test2.parquet"
+    
+    table1 = pa.table({"col1": [1, 2], "col2": [3, 4]})
+    table2 = pa.table({"col1": [5, 6], "col2": [7, 8]})
+    
+    pq.write_table(table1, str(parquet_file1))
+    pq.write_table(table2, str(parquet_file2))
+    
+    result = parquet_to_table([str(parquet_file1), str(parquet_file2)])
+    
+    assert isinstance(result, pa.Table)
+    assert len(result) == 4
+    assert result.column_names == ["col1", "col2"]
+    assert result.column("col1").to_pylist() == [1, 2, 5, 6]
+
+
+def test_parquet_to_table_with_filesystem(tmp_path: Path) -> None:
+    """Test parquet_to_table with fsspec filesystem."""
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    from fusion.utils import parquet_to_table
+    
+    parquet_file = tmp_path / "test.parquet"
+    table = pa.table({"col1": [1, 2], "col2": [3, 4]})
+    pq.write_table(table, str(parquet_file))
+    
+    fs = fsspec.filesystem("file")
+    result = parquet_to_table(str(parquet_file), fs=fs)
+    
+    assert isinstance(result, pa.Table)
+    assert len(result) == 2
+    assert result.column_names == ["col1", "col2"]
+
+
+def test_cpu_count_with_threading() -> None:
+    """Test cpu_count returns 10 when is_threading is True."""
+    result = cpu_count(is_threading=True)
+    assert result == 10
+
+
+def test_ensure_resources_missing() -> None:
+    """Test ensure_resources raises error when resources key is missing."""
+    from fusion.exceptions import APIResponseError
+    
+    with pytest.raises(APIResponseError):
+        ensure_resources({})
+    
+    with pytest.raises(APIResponseError):
+        ensure_resources({"resources": []})
+
+
+def test_convert_date_format_invalid_input() -> None:
+    """Test convert_date_format returns None for invalid inputs."""
+    import numpy as np
+    
+    assert convert_date_format(np.nan) is None
+    assert convert_date_format(123) is None  # type: ignore
+
+
+def test_convert_date_format_exception() -> None:
+    """Test convert_date_format returns None when parsing fails."""
+    assert convert_date_format("not-a-date-at-all-xyz") is None
+
+
+def test_distribution_to_filename_with_hive() -> None:
+    """Test distribution_to_filename with hive partitioning."""
+    root_dir = "/data"
+    dataset = "my_dataset"
+    datasetseries = "2024-01-01"
+    file_format = "parquet"
+    catalog = "my_catalog"
+    
+    result = distribution_to_filename(
+        root_dir, dataset, datasetseries, file_format, catalog, partitioning="hive"
+    )
+    
+    expected = f"{root_dir}/{dataset}.{file_format}"
+    assert result == expected
+
+
+def test_distribution_to_filename_with_explicit_filename() -> None:
+    """Test distribution_to_filename with explicit file_name parameter."""
+    root_dir = "/data"
+    dataset = "my_dataset"
+    datasetseries = "2024-01-01"
+    file_format = "csv"
+    catalog = "my_catalog"
+    
+    result = distribution_to_filename(
+        root_dir, dataset, datasetseries, file_format, catalog, file_name="custom_name"
+    )
+    
+    expected = f"{root_dir}/custom_name.{file_format}"
+    assert result == expected
+
+
+def test_distribution_to_filename_with_backslash_separator() -> None:
+    """Test distribution_to_filename with Windows-style paths."""
+    root_dir = "C:\\data"
+    dataset = "my_dataset"
+    datasetseries = "2024-01-01"
+    file_format = "csv"
+    catalog = "my_catalog"
+    
+    result = distribution_to_filename(root_dir, dataset, datasetseries, file_format, catalog)
+    
+    expected = f"{root_dir}\\{dataset}__{catalog}__{datasetseries}.{file_format}"
+    assert result == expected
+
+
+def test__is_json_valid() -> None:
+    """Test _is_json returns True for valid JSON."""
+    from fusion.utils import _is_json
+    
+    assert _is_json('{"key": "value"}') is True
+    assert _is_json('["item1", "item2"]') is True
+    assert _is_json('123') is True
+    assert _is_json('"string"') is True
+
+
+def test__is_json_invalid() -> None:
+    """Test _is_json returns False for invalid JSON."""
+    from fusion.utils import _is_json
+    
+    assert _is_json('not json') is False
+    assert _is_json('{invalid}') is False
+    assert _is_json('') is False
+
+
+def test_cpu_count_fallback_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test cpu_count falls back to DEFAULT_THREAD_POOL_SIZE when mp.cpu_count() returns None."""
+    import multiprocessing as mp
+
+    from fusion.utils import DEFAULT_THREAD_POOL_SIZE
+    
+    monkeypatch.delenv("NUM_THREADS", raising=False)
+    
+    monkeypatch.setattr(mp, "cpu_count", lambda: None)
+    
+    result = cpu_count()
+    assert result == DEFAULT_THREAD_POOL_SIZE
+
+
+def test_cpu_count_with_thread_pool_size_param() -> None:
+    """Test cpu_count returns the thread_pool_size parameter when provided."""
+    result = cpu_count(thread_pool_size=5)
+    assert result == 5
+
+
+def test_tidy_string_with_spaces() -> None:
+    """Test tidy_string removes extra spaces."""
+    assert tidy_string(" hello   world  ") == "hello world"
+    assert tidy_string("  multiple   spaces   ") == "multiple spaces"
+
+
+def test_make_list_various_inputs() -> None:
+    """Test make_list with various edge cases."""
+    assert make_list("") == ['']
+    result = make_list("   ")
+    assert len(result) > 0
+
+    assert make_list(" value ") == ["value"]
+
+
+def test_snake_to_camel_edge_cases() -> None:
+    """Test snake_to_camel with edge cases."""
+    assert snake_to_camel("single") == "single"
+    assert snake_to_camel("two_words") == "twoWords"
+    assert snake_to_camel("three_word_name") == "threeWordName"
+    assert snake_to_camel("UPPER_CASE") == "upperCase"
+
+
+def test_normalise_dt_param_int_conversion() -> None:
+    """Test _normalise_dt_param converts integer to string and processes it."""
+    result = _normalise_dt_param(20240115)
+    assert result == "2024-01-15"
+
+
+def test_tidy_string_with_slashes() -> None:
+    """Test tidy_string handles slashes with spaces."""
+    assert tidy_string("path/ subpath") == "path/subpath"
+    assert tidy_string("a/ b/ c") == "a/b/c"
+
+
+def test_make_bool_with_false_strings() -> None:
+    """Test make_bool handles FALSE strings."""
+    assert make_bool("F") is False
+    assert make_bool("FALSE") is False
+    assert make_bool("0") is False
+    assert make_bool("  false  ") is False  # with whitespace
+
+
+def test_normalise_dt_param_str_with_range() -> None:
+    """Test normalise_dt_param_str with date range."""
+    result = normalise_dt_param_str("2024-01-01:2024-01-31")
+    assert len(result) == 2
+    assert result[0] == "2024-01-01"
+    assert result[1] == "2024-01-31"
+
+
+def test_normalise_dt_param_str_single_date() -> None:
+    """Test normalise_dt_param_str with single date."""
+    result = normalise_dt_param_str("2024-01-15")
+    assert len(result) == 1
+    assert result[0] == "2024-01-15"
+
+
+def test_make_list_from_comma_separated() -> None:
+    """Test make_list splits comma-separated values."""
+    result = make_list("value1, value2, value3")
+    assert result == ["value1", "value2", "value3"]
+    
+    # Test with extra spaces
+    result2 = make_list("  val1  ,  val2  ")
+    assert result2 == ["val1", "val2"]
+
+
+def test_normalise_dt_param_str_empty_parts() -> None:
+    """Test normalise_dt_param_str with range having empty end."""
+    result = normalise_dt_param_str("2024-01-01:")
+    assert len(result) == 2
+    assert result[0] == "2024-01-01"
+    assert result[1] == ""
+
+
+def test_normalise_dt_param_with_datetime_min_time() -> None:
+    """Test _normalise_dt_param with datetime having min time returns date only."""
+    from datetime import datetime as dt_class
+    
+    dt_no_time = dt_class(2024, 1, 15)  # No time component, defaults to 00:00:00
+    result = _normalise_dt_param(dt_no_time)
+    assert result == "2024-01-15"
+
+
+def test_normalise_dt_param_with_date_object() -> None:
+    """Test _normalise_dt_param with date object."""
+    import datetime
+    
+    d = datetime.date(2024, 3, 25)
+    result = _normalise_dt_param(d)
+    assert result == "2024-03-25"
+
+
+def test_tidy_string_multiple_operations() -> None:
+    """Test tidy_string performs all tidying operations."""
+    # Test with multiple spaces and slashes
+    input_str = "  hello    world  /  path  "
+    result = tidy_string(input_str)
+    assert result == "hello world /path"
+
+
+def test_make_bool_with_true_values() -> None:
+    """Test make_bool with various true values."""
+    assert make_bool("TRUE") is True
+    assert make_bool("true") is True
+    assert make_bool("1") is True
+    assert make_bool(1) is True
+    assert make_bool("yes") is True
+
+
+def test_distribution_to_filename_trailing_slash_removal() -> None:
+    """Test that distribution_to_filename removes trailing slashes from datasetseries."""
+    root_dir = "/data"
+    dataset = "test_dataset"
+    datasetseries_with_slash = "2024-01-01/"
+    datasetseries_with_backslash = "2024-01-01\\"
+    file_format = "csv"
+    catalog = "test_catalog"
+    
+    result1 = distribution_to_filename(root_dir, dataset, datasetseries_with_slash, file_format, catalog)
+    result2 = distribution_to_filename(root_dir, dataset, datasetseries_with_backslash, file_format, catalog)
+    
+    expected = f"{root_dir}/{dataset}__{catalog}__2024-01-01.{file_format}"
+    assert result1 == expected
+    assert result2 == expected
+
+
+def test_normalise_dt_param_various_formats() -> None:
+    """Test _normalise_dt_param with various date string formats."""
+    # Test YYYYMMDD format
+    assert _normalise_dt_param("20240115") == "2024-01-15"
+    
+    # Test YYYY-MM-DD format
+    assert _normalise_dt_param("2024-01-15") == "2024-01-15"
+    
+    # Test with time component - should return timestamp format
+    result = _normalise_dt_param("2024-01-15 14:30:00")
+    assert result == "2024-01-15T14:30:00"
+    
+    # Test with time and T separator
+    result2 = _normalise_dt_param("2024-01-15T14:30:00")
+    assert result2 == "2024-01-15T14:30:00"
+
+
+def test_make_bool_edge_cases() -> None:
+    """Test make_bool with various edge cases."""
+    # Test with integer 0
+    assert make_bool(0) is False
+    
+    # Test with integer 1
+    assert make_bool(1) is True
+    
+    # Test with empty string
+    assert make_bool("") is False
+    
+    # Test with non-empty string
+    assert make_bool("anything") is True
+
+
+def test_tidy_string_edge_cases() -> None:
+    """Test tidy_string with various edge cases."""
+    # Already tidy string
+    assert tidy_string("clean") == "clean"
+    
+    # Only spaces
+    assert tidy_string("     ") == ""
+    
+    # Multiple operations needed
+    assert tidy_string("  a  b  / c  ") == "a b /c"
+
+
+def test_snake_to_camel_simple() -> None:
+    """Test snake_to_camel with simple cases."""
+    # No underscores
+    assert snake_to_camel("test") == "test"
+    
+    # Multiple underscores
+    assert snake_to_camel("this_is_a_test") == "thisIsATest"
+    
+    # Uppercase input
+    assert snake_to_camel("TEST_VALUE") == "testValue"
+
+
+def test_distribution_to_url_sample() -> None:
+    """Test distribution_to_url with sample datasetseries."""
+    root_url = "https://api.example.com/"
+    dataset = "my_dataset"
+    datasetseries = "sample"
+    file_format = "csv"
+    catalog = "test_catalog"
+    
+    result = distribution_to_url(root_url, dataset, datasetseries, file_format, catalog)
+    
+    # Sample data uses special endpoint
+    assert "/sample/distributions/" in result
+    assert f"catalogs/{catalog}" in result
+    assert f"datasets/{dataset}" in result
+
+
+def test_normalise_dt_param_str_error_handling() -> None:
+    """Test normalise_dt_param_str with invalid input."""
+    # Too many colons should raise ValueError
+    with pytest.raises(ValueError, match="Unable to parse"):
+        normalise_dt_param_str("2024-01-01:2024-01-15:extra")
+
+
+def test_normalise_dt_param_error_handling() -> None:
+    """Test _normalise_dt_param with invalid input."""
+    # Invalid type should raise ValueError
+    with pytest.raises(ValueError, match="not in a recognised data format"):
+        _normalise_dt_param([])  # type: ignore
+    
+    # Invalid date string should raise ValueError
+    with pytest.raises(ValueError, match="not in a recognised data format"):
+        _normalise_dt_param("not-a-date")
 

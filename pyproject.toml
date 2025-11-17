@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyfusion37"
-version = "1.0.1-dev0"
+version = "1.0.2-dev0"
 description = "JPMC Fusion Developer Tools"
 homepage = "https://github.com/jpmorganchase/fusion-3.7"
 readme = "README.md"
@@ -35,6 +35,7 @@ pyjwt = "<=1.5.3"
 urllib3 = "1.26.6"
 pytz = "*"  # Required by pandas
 typing-extensions = "^3.10"
+pyarrow = ">=0.17.0,<0.18.0" 
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"

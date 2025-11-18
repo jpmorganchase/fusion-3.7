@@ -79,7 +79,7 @@ class Dataset(metaclass=CamelCaseMeta):
     def __post_init__(self) -> None:
         """Format Dataset metadata fields after object initialization."""
         self.identifier = (
-            tidy_string(self.identifier).upper().replace(" ", "_")
+            tidy_string(self.identifier).replace(" ", "_")
         )
         self.title = (
             tidy_string(self.title)

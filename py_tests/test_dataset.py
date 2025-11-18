@@ -24,7 +24,7 @@ def test_dataset_class() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -72,7 +72,7 @@ def test_dataset_class_application_id() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -121,7 +121,7 @@ def test_dataset_class_application_id_dict() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -182,7 +182,7 @@ def test_dataset_class_from_series() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -232,7 +232,7 @@ def test_dataset_class_from_dict() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -323,7 +323,7 @@ def test_dataset_class_from_object_dataset() -> None:
     assert str(dataset_obj)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -373,7 +373,7 @@ def test_dataset_class_from_object_dict() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -424,7 +424,7 @@ def test_dataset_class_from_object_dict_app_id_dict() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -475,7 +475,7 @@ def test_dataset_class_from_object_json() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -568,7 +568,7 @@ def test_dataset_class_from_object_series() -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"

@@ -1722,7 +1722,7 @@ def test_list_product_dataset_mapping_product_no_filter(requests_mock: Any, fusi
 def test_fusion_product(fusion_obj: Any) -> None:
     test_product = fusion_obj.product(title="Test Product", identifier="Test Product", releaseDate="May 5, 2020")
     assert test_product.title == "Test Product"
-    assert test_product.identifier == "TEST_PRODUCT"
+    assert test_product.identifier == "Test_Product"
     assert test_product.category is None
     assert test_product.shortAbstract == "Test Product"
     assert test_product.description == "Test Product"
@@ -1755,7 +1755,7 @@ def test_fusion_dataset(fusion_obj: Fusion) -> None:
     assert str(test_dataset)
     assert repr(test_dataset)
     assert test_dataset.title == "Test Dataset"
-    assert test_dataset.identifier == "TEST_DATASET"
+    assert test_dataset.identifier == "Test_Dataset"
     assert test_dataset.category == ["Test"]
     assert test_dataset.description == "Test Dataset"
     assert test_dataset.frequency == "Once"
@@ -1805,13 +1805,13 @@ def test_fusion_attribute(fusion_obj: Fusion) -> None:
     assert str(test_attribute)
     assert repr(test_attribute)
     assert test_attribute.title == "Test Attribute"
-    assert test_attribute.identifier == "test_attribute"
+    assert test_attribute.identifier == "Test_Attribute"
     assert test_attribute.index == 0
     assert test_attribute.isDatasetKey
     assert test_attribute.dataType == Types.String
     assert test_attribute.description == "Test Attribute"
     assert test_attribute.source is None
-    assert test_attribute.sourceFieldId == "test_attribute"
+    assert test_attribute.sourceFieldId == "Test_Attribute"
     assert test_attribute.isInternalDatasetKey is None
     assert test_attribute.isExternallyVisible is True
     assert test_attribute.unit is None
@@ -1843,12 +1843,12 @@ def test_fusion_attributes(fusion_obj: Fusion) -> None:
     assert str(test_attributes)
     assert repr(test_attributes)
     assert test_attributes.attributes[0].title == "Test Attribute"
-    assert test_attributes.attributes[0].identifier == "test_attribute"
+    assert test_attributes.attributes[0].identifier == "Test_Attribute"
     assert test_attributes.attributes[0].index == 0
     assert test_attributes.attributes[0].dataType == Types.String
     assert test_attributes.attributes[0].description == "Test Attribute"
     assert test_attributes.attributes[0].source is None
-    assert test_attributes.attributes[0].sourceFieldId == "test_attribute"
+    assert test_attributes.attributes[0].sourceFieldId == "Test_Attribute"
     assert test_attributes.attributes[0].isInternalDatasetKey is None
     assert test_attributes.attributes[0].isExternallyVisible is True
     assert test_attributes.attributes[0].unit is None

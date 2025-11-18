@@ -17,7 +17,7 @@ def test_product_class() -> None:
     """Test the Product class."""
     test_product = Product(title="Test Product", identifier="Test Product", release_date="May 5, 2020")
     assert test_product.title == "Test Product"
-    assert test_product.identifier == "TEST_PRODUCT"
+    assert test_product.identifier == "Test_Product"
     assert test_product.category is None
     assert test_product.shortAbstract == "Test Product"
     assert test_product.description == "Test Product"
@@ -58,7 +58,7 @@ def test_product_class_from_series() -> None:
         )
     )
     assert test_product.title == "Test Product"
-    assert test_product.identifier == "TEST_PRODUCT"
+    assert test_product.identifier == "Test_Product"
     assert test_product.category is None
     assert test_product.shortAbstract == "Test Product"
     assert test_product.description == "Test Product"
@@ -271,7 +271,7 @@ def test_product_class_from_object_series() -> None:
         )
     )
     assert test_product.title == "Test Product"
-    assert test_product.identifier == "TEST_PRODUCT"
+    assert test_product.identifier == "Test_Product"
     assert test_product.category is None
     assert test_product.shortAbstract == "Test Product"
     assert test_product.description == "Test Product"

@@ -712,7 +712,10 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
 
             checksum_to_compare = base_checksum if is_multipart else expected_checksum
             if computed_checksum != checksum_to_compare:
-                error_msg = f"Checksum validation failed. File may be corrupted or incomplete."
+                error_msg = (
+                        "Checksum validation failed. File may be corrupted or incomplete. "
+                        "Please retry the download and if still failing contact the dataset owner."
+                    )
                 logger.warning(error_msg)
                 return False, output_path, error_msg
 
@@ -829,8 +832,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
                     )
                 else:
                     raise ValueError(
-                        "Checksum validation is required but missing checksum information. "
-                        f"Expected checksum: {expected_checksum}, Algorithm: {checksum_algorithm}"
+                        "Checksum validation is required but missing checksum information."
                     )
         except Exception as ex:  # noqa: BLE001
             return False, output_path, str(ex)
@@ -909,7 +911,10 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
 
                 checksum_to_compare = base_checksum if is_multipart else expected_checksum
                 if computed_checksum != checksum_to_compare:
-                    error_msg = f"Checksum validation failed. File may be corrupted or incomplete."
+                    error_msg = (
+                        "Checksum validation failed. File may be corrupted or incomplete. "
+                        "Please retry the download and if still failing contact the dataset owner."
+                    )
                     logger.warning(error_msg)
                     return False, output_path, error_msg
 
@@ -1236,10 +1241,7 @@ class FusionHTTPFileSystem(HTTPFileSystem):  # type: ignore
                         rpath = str(rpath) + "/operationType/download"
 
                     if not expected_checksum or not checksum_algorithm:
-                        error_msg = (
-                            "Checksum validation is required but missing checksum information. "
-                            f"Expected checksum: {expected_checksum}, Algorithm: {checksum_algorithm}"
-                        )
+                        error_msg = "Checksum validation is required but missing checksum information."
                         return False, lpath_str, error_msg
 
                     return sync(

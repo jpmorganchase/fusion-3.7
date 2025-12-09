@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-12-09
+* Introduced to_df function for easier data conversion to DataFrame
+* The SDK now enforces checksum validation for all downloads: downloads will be blocked if a checksum is not present or if checksum validation fails.
+* Case conversion for data product, data set, and attribute identifiers has been removed; identifiers are now case-sensitive and will no longer be automatically converted to a specific case
+* Added pagination support for Dataset, Product, and Attribute modules. for examples: attributes().from_catalog(), dataset().from_catalog(), product().from_catalog()
+* Fix file system async _cat function
+* Fix get dataset from_catalog function for catalogs with no products
+* Fix for Tags not getting copied over during update dataset
+* Fix in download function for ‘05072023' is not recognized formats
+* Fix for list_products call throws error when catalog does not have resources
+
 ## [1.0.0] - 2025-09-05
 * Support multifile download for each distribution
 * Download date time logic fix

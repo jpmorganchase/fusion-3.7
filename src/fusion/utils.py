@@ -348,7 +348,11 @@ async def get_client(credentials: FusionCredentials, **kwargs: Any) -> FusionAio
 
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     session = FusionAiohttpSession(
-        trace_configs=[trace_config], trust_env=True, timeout=timeout, connector=aiohttp.TCPConnector(ssl=ssl_context)
+        trace_configs=[trace_config],
+        trust_env=True,
+        timeout=timeout,
+        connector=aiohttp.TCPConnector(ssl=ssl_context),
+        auto_decompress=False
     )
     session.post_init(credentials=credentials)
     return session

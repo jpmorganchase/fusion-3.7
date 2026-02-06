@@ -17,6 +17,7 @@ from fusion import Fusion
 from fusion.authentication import FusionOAuthAdapter
 from fusion.credentials import FusionCredentials
 from fusion.utils import (
+    _clean_filename,
     _filename_to_distribution,
     _merge_responses,
     _normalise_dt_param,
@@ -276,6 +277,10 @@ def test_distribution_to_url() -> None:
     datasetseries = "sample"
     assert distribution_to_url(root_url, dataset, datasetseries, file_format, catalog) == exp_res
 
+
+def test_clean_filename() -> None:
+    cleaned = _clean_filename("bad name:report.csv")
+    assert cleaned == "bad_name_report.csv"
 
 def test_distribution_to_filename() -> None:
     root_dir = "/tmp"

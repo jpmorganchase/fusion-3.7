@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-02-17
+* Support Download of dataset identifier with colons. During downloads colons or any special character would be replaced with underscores in filesystem.
+* Support more file formats for downloads and uploads.
+
 ## [2.0.0] - 2025-12-09
 * Introduced to_df function for easier data conversion to DataFrame
 * The SDK now enforces checksum validation for all downloads: downloads will be blocked if a checksum is not present or if checksum validation fails.

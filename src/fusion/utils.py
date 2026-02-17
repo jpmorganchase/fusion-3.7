@@ -84,7 +84,24 @@ RECOGNIZED_FORMATS = [
     "mkv",
     "gz",
     "xml",
+    "xltm",
+    "pptx", 
+    "md",
+    "ipynb",
+    "css",
+    "jsonl",
+    "jsonld",
+    "arrow",
+    "m4a",
+    "pdb",
+    "sql",
+    "sqlite",
+    "tiff",
+    "zip",
+    "gtar",
+    "tar",
 ]
+
 
 re_str_1 = re.compile("(.)([A-Z][a-z]+)")
 re_str_2 = re.compile("([a-z0-9])([A-Z])")
@@ -253,6 +270,7 @@ def distribution_to_filename(
     sep = "/"
     if "\\" in root_folder:
         sep = "\\"
+    final_name = _clean_filename(final_name)
     return f"{root_folder}{sep}{final_name}"
 
 
@@ -700,6 +718,13 @@ def file_name_to_url(
         distribution_to_url("", dataset, datasetseries, ext, catalog, is_download).split("/")[1:]
     )
 
+def _clean_filename(filename: str) -> str:
+    
+    base = Path(filename).name
+    base = base.replace("::", "__").replace(":", "_")
+    base = re.sub(r"[^a-zA-Z0-9_\-\.]", "_", base)
+    base = base.rstrip(" .")
+    return base
 
 def handle_paginated_request(session: Session, url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
     """
